@@ -1,40 +1,46 @@
-from .storage import BasicStorageManager, STAGE
+from .storage import BasicStorageIterator, STAGE, BasicDataDirectory
 from typing import Optional, Generator, Generator
 import mne
 import numpy as np
 import pandas as pd
+from collections import namedtuple
 
 
 EOI = 103 # Id of the events of interest
 
 
+Preprocessed = namedtuple('Preprocessed', 'epochs session_info coordinates clusters')
+
+
 class BasicPreprocessor(object):
-    def __init__(self, storage_manager: BasicStorageManager):
-        self.storage_manager = storage_manager
+    def __init__(self, eoi: int, resample: Optional[int | float] = None):
+        self.eoi = eoi
+        self.resample = resample
 
-    def __call__(self, stage: Optional[STAGE] = STAGE.PRETEST) -> Generator[tuple[str, mne.Epochs, pd.DataFrame], None, None]:
+    def __call__(self, data: BasicDataDirectory) -> Generator[Preprocessed, None, None]:
 
-        for subject_name in self.storage_manager:
-            data = list(filter(
-                lambda datapath: datapath.stage == stage,
-                self.storage_manager.data_paths
-            ))[0]
-            events = data.events
-            sesinfo = data.sesinfo
-            selected_trial_nums = events[events[:, 0] == EOI][:, 1]
-            sesinfo.drop(np.setxor1d(selected_trial_nums, sesinfo['Trial_n'].to_numpy() - 1), inplace=True)
-            trials_sel = np.where(events[:, 0] == 103)[0]
-            mask = np.logical_and(sesinfo.Missed == 0, sesinfo.Seed == 1)
-            trials_sel = trials_sel[mask]
-            sesinfo = sesinfo[mask]
-            coords = sesinfo[['SpatialCoordinates_1', 'SpatialCoordinates_2']].to_numpy() - 50
+        events = data.events
+        sesinfo = data.sesinfo
+        selected_trial_nums = events[events[:, 0] == self.eoi][:, 1]
+        sesinfo.drop(np.setxor1d(selected_trial_nums, sesinfo['Trial_n'].to_numpy() - 1), inplace=True)
+        trials_sel = np.where(events[:, 0] == self.eoi)[0]
+        mask = np.logical_and(sesinfo.Missed == 0, sesinfo.Seed == 1)
+        trials_sel = trials_sel[mask]
+        sesinfo = sesinfo[mask]
+        coords = sesinfo[['SpatialCoordinates_1', 'SpatialCoordinates_2']].to_numpy() - 50
 
-            clusters = np.array(list(map(
-                self.define_cluster,
-                coords
-            )))
+        clusters = np.array(list(map(
+            self.define_cluster,
+            coords
+        )))
+        epochs = data.epochs[trials_sel] if self.resample is None else data.epochs[trials_sel].resample(self.resample)
 
-            yield subject_name, data.epochs[trials_sel].resample(200), sesinfo, coords.astype(float), clusters.astype(float)
+        return Preprocessed(
+            epochs,
+            sesinfo,
+            coords.astype(float),
+            clusters.astype(float)
+        )
 
     @staticmethod
     def define_quarter(bool_pair: tuple[bool, bool]) -> int:

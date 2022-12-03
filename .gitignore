@@ -130,5 +130,7 @@ dmypy.json
 
 # custom
 DATA/
+RESULTS/
 dev/
+logs/
 TFR/
