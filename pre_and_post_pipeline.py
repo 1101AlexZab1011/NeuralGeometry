@@ -151,7 +151,7 @@ if __name__ == '__main__':
             patterns = model.patterns.copy()
             model.compute_patterns(meta['test_paths'], output='filters')
             filters = model.patterns.copy()
-            franges, finputs, foutputs, fresponces = compute_temporal_parameters(model)
+            franges, finputs, foutputs, fresponces, fpatterns = compute_temporal_parameters(model)
             induced, times, time_courses = compute_waveforms(model)
 
             save_parameters(
@@ -166,7 +166,7 @@ if __name__ == '__main__':
                 'spatial'
             )
             save_parameters(
-                TemporalParameters(franges, finputs, foutputs, fresponces),
+                TemporalParameters(franges, finputs, foutputs, fresponces, fpatterns),
                 os.path.join(iterator.parameters_path, 'temporal.pkl'),
                 'temporal'
             )

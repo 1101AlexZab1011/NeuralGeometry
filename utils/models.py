@@ -195,3 +195,79 @@ class SimpleNet(mf.models.LFCNN):
                     title='Patterns ('+str(sorting)+')',
                     outlines='head',
                 )
+
+    def branchwise_loss(self, X, y):
+        model_weights_original = self.km.get_weights().copy()
+        base_loss, _ = self.km.evaluate(X, y, verbose=0)
+
+        losses = []
+        for i in range(self.specs["n_latent"]):
+            model_weights = model_weights_original.copy()
+            spatial_weights = model_weights[0].copy()
+            spatial_biases = model_weights[1].copy()
+            temporal_biases = model_weights[3].copy()
+            env_biases = model_weights[5].copy()
+            spatial_weights[:, i] = 0
+            spatial_biases[i] = 0
+            temporal_biases[i] = 0
+            env_biases[i] = 0
+            model_weights[0] = spatial_weights
+            model_weights[1] = spatial_biases
+            model_weights[3] = temporal_biases
+            model_weights[5] = env_biases
+            self.km.set_weights(model_weights)
+            losses.append(self.km.evaluate(X, y, verbose=0)[0])
+        self.km.set_weights(model_weights_original)
+        self.branch_relevance_loss = base_loss - np.array(losses)
+
+    def plot_branch(
+        self,
+        branch_num: int,
+        info: mne.Info,
+        params: Optional[list[str]] = ['input', 'output', 'response']
+    ):
+        info.__setstate__(dict(_unlocked=True))
+        info['sfreq'] = 1.
+        data = self.patterns[:, np.argsort(self.branch_relevance_loss)]
+        relevances = self.branch_relevance_loss - self.branch_relevance_loss.min()
+        relevance = sorted([np.round(rel/relevances.sum(), 2) for rel in relevances], reverse=True)[branch_num]
+        self.fake_evoked = evoked.EvokedArray(data, info, tmin=0)
+        fig, (ax1, ax2) = plt.subplots(ncols=2, nrows=1)
+        fig.tight_layout()
+
+        self.fs = self.dataset.h_params['fs']
+
+        out_filter = self.filters[:, branch_num]
+        _, psd = sl.welch(self.lat_tcs[branch_num], fs=self.fs, nperseg=self.fs * 2)
+        w, h = (lambda w, h: (w, h))(*sl.freqz(out_filter, 1, worN=self.fs))
+        frange = w / np.pi * self.fs / 2
+
+        for param in params:
+            if param == 'input':
+                finput = psd[:-1]
+                ax2.plot(frange, (finput - finput.mean())/finput.std() + finput.mean()/finput.std(), color='tab:blue')
+            elif param == 'output':
+                foutput = np.real(finput * h * np.conj(h))
+                ax2.plot(frange, (foutput - foutput.mean())/foutput.std() + foutput.mean()/foutput.std(), color='tab:orange')
+            elif param == 'response':
+                fresponce = np.abs(h)
+                ax2.plot(frange, (fresponce - fresponce.mean())/fresponce.std() + fresponce.mean()/fresponce.std(), color='tab:green')
+            elif param == 'pattern':
+                fpattern = finput * np.abs(h)
+                ax2.plot((fpattern - fpattern.mean())/fpattern.std() + fpattern.mean()/fpattern.std(), color='tab:pink')
+
+        ax2.legend([param.capitalize() for param in params])
+        ax2.set_xlim(0, 100)
+
+        fig.suptitle(f'Branch {branch_num}', y=0.95, x=0.2, fontsize=30)
+        fig.set_size_inches(10, 5)
+        self.fake_evoked.plot_topomap(
+            times=branch_num,
+            axes=ax1,
+            colorbar=False,
+            scalings=1,
+            time_format="",
+            outlines='head',
+        )
+
+        return fig
