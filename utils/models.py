@@ -6,6 +6,8 @@ import mneflow as mf
 import numpy as np
 import scipy.signal as sl
 from mne import channels, evoked, create_info
+import mne
+from typing import Optional
 
 
 class SimpleNet(mf.models.LFCNN):
@@ -84,6 +86,7 @@ class SimpleNet(mf.models.LFCNN):
         )
         self.out_biases = self.fin_fc.b.numpy()
         self.feature_relevances = self.componentwise_loss(X, y)
+        self.branchwise_loss(X, y)
 
         # compute temporal convolution layer outputs for vis_dics
         tc_out = self.pool(self.tconv(self.dmx(X)).numpy())

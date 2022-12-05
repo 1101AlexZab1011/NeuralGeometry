@@ -50,13 +50,15 @@ if __name__ == '__main__':
     sp = read_pkl(os.path.join(iterator.parameters_path, 'spatial.pkl'))
     tp = read_pkl(os.path.join(iterator.parameters_path, 'temporal.pkl'))
     wf = read_pkl(os.path.join(iterator.parameters_path, 'waveforms.pkl'))
+    order = read_pkl(os.path.join(iterator.parameters_path, 'branch_loss.pkl'))
 
     plot_spatial_weights(
         sp,
         tp,
         wf,
         mne.read_epochs(iterator.data_paths[-1].epochs_path).pick_types(meg='grad').info,
-        summarize='sumabs',
-        logscale=False
+        summarize=order - order.min(),
+        logscale=False,
+        temp_params=['input', 'output', 'response', 'pattern']
     )
     plt.show()

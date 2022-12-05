@@ -30,8 +30,8 @@ class BasicDataDirectory:
         self.epochs_path = os.path.join(self.path, f'{self.name}_epochs_sel.fif')
         self.events_path = os.path.join(self.path, f'{self.name}_EventFile_trls_sel.npy')
         sesinfo_file_name = f'{os.path.basename(os.path.dirname(self.path)).replace("u", "")}_{self.name.lower()}'
-        sesinfo_file_name = f'{sesinfo_file_name[:3] + sesinfo_file_name[4:]}.csv' if sesinfo_file_name[:3] == '0' else sesinfo_file_name
-        self.sesinfo_path = os.path.join(self.path, f'{sesinfo_file_name}.csv')
+        sesinfo_file_name = f'{sesinfo_file_name[:3] + sesinfo_file_name[4:]}.csv' if sesinfo_file_name[3] == '0' else sesinfo_file_name
+        self.sesinfo_path = os.path.join(self.path, f'{sesinfo_file_name}')
 
     def __str__(self) -> str:
         return f'BasicDataDirectory at {self.path}'
@@ -102,7 +102,7 @@ class BasicStorageIterator:
 
 class DLStorageIterator(BasicStorageIterator):
     def __init__(self, subjects_dir: str, name: str, *, filter_fun: Optional[Callable] = None):
-        super().__init__(subjects_dir)
+        super().__init__(subjects_dir, filter_fun=filter_fun)
         self.results_path = os.path.join(
             os.path.abspath(os.path.join(self.subjects_dir, os.pardir)),
             'RESULTS'

@@ -110,7 +110,7 @@ if __name__ == '__main__':
         meta = mf.produce_tfrecords((X, Y), **import_opt)
         dataset = mf.Dataset(meta, train_batch=100)
         lf_params = dict(
-            n_latent=16, #number of latent factors
+            n_latent=32, #number of latent factors
             filter_length=50, #convolutional filter length in time samples
             nonlin = tf.nn.elu,
             padding = 'SAME',
@@ -153,6 +153,12 @@ if __name__ == '__main__':
             filters = model.patterns.copy()
             franges, finputs, foutputs, fresponces, fpatterns = compute_temporal_parameters(model)
             induced, times, time_courses = compute_waveforms(model)
+
+            save_parameters(
+                model.branch_relevance_loss,
+                os.path.join(iterator.parameters_path, 'branch_loss.pkl'),
+                'Branches relevance'
+            )
 
             save_parameters(
                 WaveForms(time_courses.mean(1), induced, times, time_courses),
