@@ -61,13 +61,16 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(f'This kind of sorting is not implemented: "{sort_}"')
 
+    epochs =  mne.read_epochs(iterator.data_paths[-1].epochs_path).pick_types(meg='grad')
+
     plot_spatial_weights(
         sp,
         tp,
         wf,
-        mne.read_epochs(iterator.data_paths[-1].epochs_path).pick_types(meg='grad').info,
+        epochs.info,
         summarize=order,
         logscale=False,
-        temp_params=['input', 'output', 'response', 'pattern']
+        temp_params=['input', 'output', 'response', 'pattern'],
+        shift_induced_times = -epochs.times[0]
     )
     plt.show()
