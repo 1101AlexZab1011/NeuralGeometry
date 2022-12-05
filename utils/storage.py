@@ -58,6 +58,7 @@ class BasicStorageIterator:
         logging.info(f'Initialize storage management for {self.subjects_dir}')
         self.subject_dirs = os.listdir(subjects_dir) if not filter_fun else \
             list(filter(filter_fun, os.listdir(subjects_dir)))
+        self.subject_dirs = sorted(self.subject_dirs, reverse=True)
         self.subject_path = None
         self.data_paths = None
         self.__current_subject_index = 0
