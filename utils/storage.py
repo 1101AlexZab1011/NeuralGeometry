@@ -29,8 +29,8 @@ class BasicDataDirectory:
 
         self.epochs_path = os.path.join(self.path, f'{self.name}_epochs_sel.fif')
         self.events_path = os.path.join(self.path, f'{self.name}_EventFile_trls_sel.npy')
-        sesinfo_file_name = f'{os.path.basename(os.path.dirname(self.path)).replace("u", "")}_{self.name.lower()}'
-        sesinfo_file_name = f'{sesinfo_file_name[:3] + sesinfo_file_name[4:]}.csv' if sesinfo_file_name[3] == '0' else sesinfo_file_name
+        sesinfo_file_name = f'{os.path.basename(os.path.dirname(self.path)).replace("u", "")}_{self.name.lower()}.csv'
+        sesinfo_file_name = f'{sesinfo_file_name[:3] + sesinfo_file_name[4:]}' if sesinfo_file_name[3] == '0' else sesinfo_file_name
         self.sesinfo_path = os.path.join(self.path, f'{sesinfo_file_name}')
 
     def __str__(self) -> str:
