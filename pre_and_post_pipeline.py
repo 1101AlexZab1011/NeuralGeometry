@@ -19,12 +19,6 @@ import logging
 
 if __name__ == '__main__':
     mpl.use('agg')
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s:\t%(message)s',
-        filename='./logs/main.log',
-        encoding='utf-8',
-        level=logging.DEBUG
-    )
     parser = argparse.ArgumentParser(
         description='The script for applying the neural network "SimpleNet" to the '
         'epoched data from gradiometers related to events for classification'
@@ -82,6 +76,12 @@ if __name__ == '__main__':
             classification_postfix
         ]
     )))
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)s:\t%(message)s',
+        filename=f'./logs/{classification_name}.log',
+        encoding='utf-8',
+        level=logging.DEBUG
+    )
     logging.info(f'Current classification: {classification_name}')
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
