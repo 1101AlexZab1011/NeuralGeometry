@@ -28,12 +28,15 @@ if __name__ == '__main__':
                         default='', help='String to append to a task name')
     parser.add_argument('--prefix', type=str,
                         default='', help='String to set in the start of a task name')
+    parser.add_argument('--sort', type=str,
+                        default='branch_loss', help='A way to sort components. Can be "sumabs", "sum", "abssum" or "branch_loss"')
 
     subjects_dir,\
         subject_name,\
         classification_name,\
         classification_postfix,\
-        classification_prefix = vars(parser.parse_args()).values()
+        classification_prefix,\
+        sort_ = vars(parser.parse_args()).values()
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -50,14 +53,20 @@ if __name__ == '__main__':
     sp = read_pkl(os.path.join(iterator.parameters_path, 'spatial.pkl'))
     tp = read_pkl(os.path.join(iterator.parameters_path, 'temporal.pkl'))
     wf = read_pkl(os.path.join(iterator.parameters_path, 'waveforms.pkl'))
-    order = read_pkl(os.path.join(iterator.parameters_path, 'branch_loss.pkl'))
+    if sort_ == 'branch_loss':
+        order = read_pkl(os.path.join(iterator.parameters_path, 'branch_loss.pkl'))
+        order = order - order.min()
+    elif sort_ in ['sum', 'sumabs', 'abssum']:
+        order = sort_
+    else:
+        raise NotImplementedError(f'This kind of sorting is not implemented: "{sort_}"')
 
     plot_spatial_weights(
         sp,
         tp,
         wf,
         mne.read_epochs(iterator.data_paths[-1].epochs_path).pick_types(meg='grad').info,
-        summarize=order - order.min(),
+        summarize=order,
         logscale=False,
         temp_params=['input', 'output', 'response', 'pattern']
     )
