@@ -33,7 +33,7 @@ if __name__ == '__main__':
                         default=[], help='IDs of subjects to exclude')
     parser.add_argument('-from', type=int,
                         default=None, help='ID of a subject to start from')
-    parser.add_argument('-to', type=int, nargs='+',
+    parser.add_argument('-to', type=int,
                         default=None, help='ID of a subject to end with')
     parser.add_argument('-sd', '--subjects-dir', type=str,
                         default=os.path.join(os.getcwd(), 'DATA'),
