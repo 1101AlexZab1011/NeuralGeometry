@@ -120,7 +120,10 @@ class DLStorageIterator(BasicStorageIterator):
         self.network_out_path = os.path.join(self.subject_results_path, 'TFR')
         self.parameters_path = os.path.join(self.subject_results_path, 'Parameters')
         self.predictions_path = os.path.join(self.subject_results_path, 'Predictions')
-        self.history_path = os.path.join(self.subject_results_path, 'History')
+        self.history_path = os.path.join(
+            os.path.abspath(os.path.join(self.subjects_dir, os.pardir)),
+            'History'
+        )
 
         check_path(
             os.path.abspath(os.path.join(self.subject_results_path, os.pardir)),
