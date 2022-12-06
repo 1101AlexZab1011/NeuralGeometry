@@ -146,6 +146,7 @@ if __name__ == '__main__':
             model.compute_patterns(meta['test_paths'])
             nt = model.dataset.h_params['n_t']
             time_courses = np.squeeze(model.lat_tcs.reshape([model.specs['n_latent'], -1, nt]))
+            time_courses_filt = np.squeeze(model.lat_tcs_filt.reshape([model.specs['n_latent'], -1, nt]))
             times = (1 / float(model.dataset.h_params['fs'])) *\
                 np.arange(model.dataset.h_params['n_t'])
             patterns = model.patterns.copy()
@@ -161,7 +162,7 @@ if __name__ == '__main__':
             )
 
             save_parameters(
-                WaveForms(time_courses.mean(1), induced, induced_filt, times, time_courses),
+                WaveForms(time_courses.mean(1), time_courses_filt.mean(1), induced, induced_filt, times, time_courses),
                 os.path.join(iterator.parameters_path, 'waveforms.pkl'),
                 'WaveForms'
             )
