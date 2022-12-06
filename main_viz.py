@@ -30,13 +30,16 @@ if __name__ == '__main__':
                         default='', help='String to set in the start of a task name')
     parser.add_argument('--sort', type=str,
                         default='branch_loss', help='A way to sort components. Can be "sumabs", "sum", "abssum" or "branch_loss"')
+    parser.add_argument('--filt_induced', action='store_true',
+                        help='Show induced after filtering or before (default is before)')
 
     subjects_dir,\
         subject_name,\
         classification_name,\
         classification_postfix,\
         classification_prefix,\
-        sort_ = vars(parser.parse_args()).values()
+        sort_,\
+        filt_induced = vars(parser.parse_args()).values()
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -71,6 +74,7 @@ if __name__ == '__main__':
         summarize=order,
         logscale=False,
         temp_params=['input', 'output', 'response', 'pattern'],
-        shift_induced_times = -epochs.times[0]
+        shift_induced_times = -epochs.times[0],
+        filtered_induced=filt_induced
     )
     plt.show()

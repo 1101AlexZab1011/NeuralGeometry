@@ -115,6 +115,7 @@ class SimpleNet(mf.models.LFCNN):
                         X_filt[:, i_ch] = np.convolve(x, kern[i_comp, :], mode="same")
                     patterns.append(np.cov(X_filt.T) @ demx[:, i_comp])
                 self.patterns = np.array(patterns).T
+                self.lat_tcs_filt = np.dot(demx.T, X_filt.T)
         else:
             self.patterns = demx
 
