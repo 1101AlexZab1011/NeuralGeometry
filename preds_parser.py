@@ -85,11 +85,8 @@ if __name__ == '__main__':
         all_sumdf.append(sumdf)
         all_confdf.append(confdf)
 
-    all_sumdf = pd.concat(all_sumdf).mean()
-    all_confdf = pd.concat(all_confdf).mean()
-    # all_sumdf_data = np.array([df.to_numpy() for df in all_sumdf])
-    # all_sumdf_data = np.array([df.to_numpy() for df in all_confdf])
-    print(all_sumdf)
+    all_sumdf_data = np.array([df.to_numpy() for df in all_sumdf])
+    all_sumdf_data = np.array([df.to_numpy() for df in all_confdf])
     cols = all_sumdf[0].columns
     inxs = all_sumdf[0].index
     print(all_sumdf_data.shape)
