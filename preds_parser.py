@@ -85,14 +85,16 @@ if __name__ == '__main__':
         all_sumdf.append(sumdf)
         all_confdf.append(confdf)
 
+    all_sumdf_data = np.array([df.to_numpy() for df in all_sumdf]).mean(0)
+    all_confdf_data = np.array([df.to_numpy() for df in all_confdf]).mean(0)
     pd.DataFrame(
-        data=np.array([df.to_numpy() for df in all_sumdf]).mean(0),
+        data=all_sumdf_data,
         columns=all_sumdf[0].columns,
         index=all_sumdf[0].index
     )\
         .to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_summary.csv'))
     pd.DataFrame(
-        data=np.array([df.to_numpy() for df in all_confdf]).mean(0),
+        data=all_confdf_data,
         columns=all_confdf[0].columns,
         index=all_confdf[0].index
     )\
