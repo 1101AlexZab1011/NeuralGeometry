@@ -9,6 +9,7 @@ import os
 from utils.storage import DLStorageIterator
 import pandas as pd
 import re
+import numpy as np
 
 
 if __name__ == '__main__':
@@ -86,7 +87,12 @@ if __name__ == '__main__':
 
     all_sumdf = pd.concat(all_sumdf).mean()
     all_confdf = pd.concat(all_confdf).mean()
+    all_sumdf_data = np.array([df.to_numpy() for df in all_sumdf])
+    all_sumdf_data = np.array([df.to_numpy() for df in all_confdf])
     print(all_sumdf.shape)
+    cols = all_sumdf[0].columns
+    inxs = all_sumdf[0].index
+    print(all_sumdf_data.shape)
     raise OSError()
     sumdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_summary.csv'))
     confdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_confusion.csv'))
