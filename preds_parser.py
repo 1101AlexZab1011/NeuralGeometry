@@ -53,7 +53,6 @@ if __name__ == '__main__':
             ],
             axis=1
         )
-        print(sumdf)
         confdf = pd.concat([
                 confdf,
                 pp.confusion,
