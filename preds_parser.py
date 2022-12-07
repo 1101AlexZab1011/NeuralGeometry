@@ -8,6 +8,7 @@ import argparse
 import os
 from utils.storage import DLStorageIterator
 import pandas as pd
+import re
 
 
 if __name__ == '__main__':
@@ -15,6 +16,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='The script for visualising spatial and spectral patterns learned by a LFCNN-like network'
     )
+    parser.add_argument('-es', '--exclude-subjects', type=int, nargs='+',
+                        default=[], help='IDs of subjects to exclude')
+    parser.add_argument('-from', type=int,
+                        default=None, help='ID of a subject to start from')
+    parser.add_argument('-to', type=int,
+                        default=None, help='ID of a subject to end with')
     parser.add_argument('-sd', '--subjects-dir', type=str,
         default=os.path.join(os.getcwd(), 'DATA'),
         help='Path to the subjects directory')
@@ -25,7 +32,10 @@ if __name__ == '__main__':
     parser.add_argument('--prefix', type=str,
                         default='', help='String to set in the start of a task name')
 
-    subjects_dir,\
+    excluded_subjects, \
+        from_, \
+        to, \
+        subjects_dir,\
         classification_name,\
         classification_postfix,\
         classification_prefix = vars(parser.parse_args()).values()
@@ -40,9 +50,18 @@ if __name__ == '__main__':
     )))
 
     iterator = DLStorageIterator(subjects_dir, classification_name_formatted)
-    for subject in iterator:
+    all_sumdf = list()
+    all_confdf = list()
+    for subject_name in iterator:
+        subject_num = int(re.findall(r'\d+', subject_name)[0])
+
+        if (subject_num in excluded_subjects) or\
+            (from_ and subject_num < from_) or\
+            (to and subject_num > to):
+            continue
 
         predictions = read_pkl(os.path.join(iterator.predictions_path, 'y_pred.pkl'))
+
         sumdf = pd.DataFrame()
         confdf = pd.DataFrame()
         pp = PredictionsParser(predictions.y_true, predictions.y_p)
@@ -62,3 +81,10 @@ if __name__ == '__main__':
         )
         sumdf.to_csv(os.path.join(iterator.predictions_path, f'summary.csv'))
         confdf.to_csv(os.path.join(iterator.predictions_path, f'confusion.csv'))
+        all_sumdf.append(sumdf)
+        all_confdf.append(confdf)
+
+    all_sumdf = pd.concat(all_sumdf).mean()
+    all_confdf = pd.concat(all_confdf).mean()
+    sumdf.to_csv(os.path.join(iterator.history_path, f'summary.csv'))
+    confdf.to_csv(os.path.join(iterator.history_path, f'confusion.csv'))
