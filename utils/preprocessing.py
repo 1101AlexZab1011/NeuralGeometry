@@ -6,28 +6,32 @@ import pandas as pd
 from collections import namedtuple
 
 
-EOI = 103 # Id of the events of interest
-
-
 Preprocessed = namedtuple('Preprocessed', 'epochs session_info coordinates clusters')
 
 
 class BasicPreprocessor(object):
-    def __init__(self, eoi: int, resample: Optional[int | float] = None):
+    def __init__(
+        self,
+        eoi: int,
+        resample: Optional[int | float] = None,
+        seed: Optional[int] = 1
+    ):
         self.eoi = eoi
         self.resample = resample
+        self.seed = seed
 
-    def __call__(self, data: BasicDataDirectory) -> Generator[Preprocessed, None, None]:
+    def __call__(self, data: BasicDataDirectory) -> Preprocessed:
 
         events = data.events
         sesinfo = data.sesinfo
         selected_trial_nums = events[events[:, 0] == self.eoi][:, 1]
         sesinfo.drop(np.setxor1d(selected_trial_nums, sesinfo['Trial_n'].to_numpy() - 1), inplace=True)
         trials_sel = np.where(events[:, 0] == self.eoi)[0]
-        mask = np.logical_and(sesinfo.Missed == 0, sesinfo.Seed == 1)
+        mask = np.logical_and(sesinfo.Missed == 0, sesinfo.Seed == self.seed)
         trials_sel = trials_sel[mask]
         sesinfo = sesinfo[mask]
-        coords = sesinfo[['SpatialCoordinates_1', 'SpatialCoordinates_2']].to_numpy() - 50
+        coords = sesinfo[['SpatialCoordinates_1', 'SpatialCoordinates_2']].to_numpy() - 50 if self.seed == 1 else\
+            sesinfo[['ConceptualCoordinates_1', 'ConceptualCoordinates_2']].to_numpy() - 50
 
         clusters = np.array(list(map(
             self.define_cluster,
