@@ -69,7 +69,6 @@ if __name__ == '__main__':
         sumdf = pd.concat([
                 sumdf,
                 pp.summary(),
-                # pd.DataFrame([None for _ in range(pp.summary().shape[0])], index=pp.summary().index),
             ],
             axis=1
         )
