@@ -53,10 +53,10 @@ if __name__ == '__main__':
             ],
             axis=1
         )
+        print(sumdf)
         confdf = pd.concat([
                 confdf,
                 pp.confusion,
-                # pd.DataFrame([None for _ in range(pp.confusion.shape[0])], index=pp.confusion.index),
                 pd.DataFrame(list(confdf.index), index=confdf.index),
             ],
             axis=1
