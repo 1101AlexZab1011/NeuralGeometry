@@ -86,5 +86,5 @@ if __name__ == '__main__':
 
     all_sumdf = pd.concat(all_sumdf).mean()
     all_confdf = pd.concat(all_confdf).mean()
-    sumdf.to_csv(os.path.join(iterator.history_path, f'summary.csv'))
-    confdf.to_csv(os.path.join(iterator.history_path, f'confusion.csv'))
+    sumdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_summary.csv'))
+    confdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_confusion.csv'))
