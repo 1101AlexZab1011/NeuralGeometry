@@ -85,11 +85,15 @@ if __name__ == '__main__':
         all_sumdf.append(sumdf)
         all_confdf.append(confdf)
 
-    all_sumdf_data = np.array([df.to_numpy() for df in all_sumdf])
-    all_sumdf_data = np.array([df.to_numpy() for df in all_confdf])
-    cols = all_sumdf[0].columns
-    inxs = all_sumdf[0].index
-    print(all_sumdf_data.shape)
-    raise OSError()
-    sumdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_summary.csv'))
-    confdf.to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_confusion.csv'))
+    pd.DataFrame(
+        data=np.array([df.to_numpy() for df in all_sumdf]).mean(0),
+        columns=all_sumdf[0].columns,
+        index=all_sumdf[0].index
+    )\
+        .to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_summary.csv'))
+    pd.DataFrame(
+        data=np.array([df.to_numpy() for df in all_confdf]).mean(0),
+        columns=all_confdf[0].columns,
+        index=all_confdf[0].index
+    )\
+        .to_csv(os.path.join(iterator.history_path, f'{classification_name_formatted}_confusion.csv'))
