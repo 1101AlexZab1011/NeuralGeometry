@@ -118,7 +118,7 @@ if __name__ == '__main__':
             stride = 5, #stride parameter for pooling layer
             pool_type='max',
             model_path = import_opt['savepath'],
-            dropout = .5,
+            dropout = .2,
             l1_scope = ["weights"],
             l1=3e-1
         )
