@@ -53,7 +53,7 @@ if __name__ == '__main__':
         pretest = iterator.get_data(STAGE.PRETEST).sesinfo
         pretest = pretest[pretest.Missed == 0]
         training = iterator.get_data(STAGE.TRAINING).sesinfo
-        training = pretest[training.Missed == 0]
+        training = training[training.Missed == 0]
         posttest = iterator.get_data(STAGE.POSTTEST).sesinfo
         posttest = posttest[posttest.Missed == 0]
         subject_names.append(subject_name)
