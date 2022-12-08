@@ -42,6 +42,14 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name='Default Name')
     subject_names, pretest_acc, traininig_acc, posttest_acc = list(), list(), list(), list()
     for subject_name in iterator:
+        subject_num = int(re.findall(r'\d+', subject_name)[0])
+
+        if (subject_num in excluded_subjects) or\
+            (from_ and subject_num < from_) or\
+            (to and subject_num > to):
+            logging.debug(f'Skipping subject {subject_name}')
+            continue
+
         pretest = iterator.get_data(STAGE.PRETEST).sesinfo
         pretest = pretest[pretest.Missed == 0]
         # training = iterator.get_data(STAGE.TRAINING).sesinfo
