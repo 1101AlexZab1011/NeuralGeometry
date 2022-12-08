@@ -15,6 +15,7 @@ from deepmeg.params import save_parameters, compute_temporal_parameters, compute
     Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order
 import re
 import logging
+from utils import balance
 
 
 if __name__ == '__main__':
@@ -41,6 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    parser.add_argument('--balance', action='store_true', help='Balance classes')
 
     excluded_subjects, \
         from_, \
@@ -50,7 +52,8 @@ if __name__ == '__main__':
         classification_postfix,\
         classification_prefix, \
         project_name, \
-        no_params = vars(parser.parse_args()).values()
+        no_params, \
+        balance_classes = vars(parser.parse_args()).values()
 
     import_opt = dict(
         savepath=None,  # path where TFR files will be saved
@@ -103,6 +106,10 @@ if __name__ == '__main__':
             data_post.epochs.pick_types(meg='grad').get_data()
         ])
         Y = np.concatenate([data_pre.clusters, data_post.clusters])
+
+        if balance_classes:
+            X, Y = balance(X, Y)
+
         n_classes, classes_samples = np.unique(Y, return_counts=True)
         n_classes = len(n_classes)
         classes_samples = classes_samples.tolist()

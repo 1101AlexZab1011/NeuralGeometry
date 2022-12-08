@@ -15,6 +15,7 @@ from deepmeg.params import save_parameters, compute_temporal_parameters, compute
     Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order
 import re
 import logging
+from utils import balance
 
 
 if __name__ == '__main__':
@@ -41,6 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
 
     excluded_subjects, \
@@ -52,6 +54,7 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
+        balance_classes, \
         target_col_name = vars(parser.parse_args()).values()
 
     import_opt = dict(
@@ -115,6 +118,10 @@ if __name__ == '__main__':
             con_data_pre.session_info[target_col_name].to_numpy(),
             con_data_post.session_info[target_col_name].to_numpy()
         ])
+
+        if balance_classes:
+            X, Y = balance(X, Y)
+
         n_classes, classes_samples = np.unique(Y, return_counts=True)
         n_classes = len(n_classes)
         classes_samples = classes_samples.tolist()

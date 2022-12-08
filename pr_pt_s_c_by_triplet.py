@@ -18,6 +18,36 @@ import logging
 from utils import balance
 
 
+def define_triplet(proc: Preprocessed, target: str) -> np.ndarray:
+    res = list()
+    for q, o, coords in zip(
+        list(map(
+            BasicPreprocessor.define_quarter,
+            proc.coordinates >= 0
+        )),
+        proc.session_info[target].to_list(),
+        proc.coordinates
+    ):
+        if o == 0:
+            if q == 0:
+                res.append(0)
+            elif q == 2:
+                res.append(2)
+            else:
+                dist2q2 = np.sqrt((coords[0] + 50)**2 + (coords[1] - 50)**2)
+                dist2q0 = np.sqrt((coords[0] - 50)**2 + (coords[1] + 50)**2)
+                if dist2q0 > dist2q2:
+                    res.append(0)
+                else:
+                    res.append(2)
+        else:
+            res.append(1)
+
+    assert len(res) == len(proc.clusters)
+
+    return np.array(res)
+
+
 if __name__ == '__main__':
     mpl.use('agg')
     parser = argparse.ArgumentParser(
@@ -43,6 +73,7 @@ if __name__ == '__main__':
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
+    parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
 
     excluded_subjects, \
         from_, \
@@ -53,7 +84,8 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
-        balance_classes = vars(parser.parse_args()).values()
+        balance_classes, \
+        target_col_name = vars(parser.parse_args()).values()
 
     import_opt = dict(
         savepath=None,  # path where TFR files will be saved
@@ -85,7 +117,7 @@ if __name__ == '__main__':
         encoding='utf-8',
         level=logging.DEBUG
     )
-    logging.info(f'Current classification: {classification_name}')
+    logging.info(f'Current classification: {classification_name_formatted}')
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     for subject_name in iterator:
@@ -110,7 +142,12 @@ if __name__ == '__main__':
             con_data_pre.epochs.pick_types(meg='grad').get_data(),
             con_data_post.epochs.pick_types(meg='grad').get_data()
         ])
-        Y = np.concatenate([sp_data_pre.clusters, sp_data_post.clusters, con_data_pre.clusters, con_data_post.clusters])
+        Y = np.concatenate([
+            define_triplet(sp_data_pre, target_col_name),
+            define_triplet(sp_data_post, target_col_name),
+            define_triplet(con_data_pre, target_col_name),
+            define_triplet(con_data_post, target_col_name)
+        ])
 
         if balance_classes:
             X, Y = balance(X, Y)
@@ -122,15 +159,15 @@ if __name__ == '__main__':
         meta = mf.produce_tfrecords((X, Y), **import_opt)
         dataset = mf.Dataset(meta, train_batch=100)
         lf_params = dict(
-            n_latent=16, #number of latent factors
+            n_latent=8, #number of latent factors
             filter_length=50, #convolutional filter length in time samples
-            nonlin = tf.nn.elu,
+            nonlin = tf.nn.relu,
             padding = 'SAME',
             pooling = 5,#pooling factor
             stride = 5, #stride parameter for pooling layer
             pool_type='max',
             model_path = import_opt['savepath'],
-            dropout = .2,
+            dropout = .4,
             l1_scope = ["weights"],
             l1=3e-1
         )
