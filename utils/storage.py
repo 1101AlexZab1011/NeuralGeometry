@@ -74,7 +74,7 @@ class BasicStorageIterator:
             for file_name in os.listdir(self.subject_path) if os.path.isdir(path := os.path.join(self.subject_path, file_name))
         ]
 
-    def get_data(self, stage: STAGE):
+    def get_data(self, stage: STAGE) -> BasicDataDirectory:
         if not self.data_paths:
             raise OSError('Subject is not selected')
 
