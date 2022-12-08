@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
-    parser.add_argument('t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
+    parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
 
     excluded_subjects, \
         from_, \
