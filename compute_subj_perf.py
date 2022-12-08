@@ -60,6 +60,7 @@ if __name__ == '__main__':
         pretest_acc.append(pretest.Feedback.sum()/pretest.Feedback.shape[0])
         # traininig_acc.append(training.Feedback.sum()/training.Feedback.shape[0])
         posttest_acc.append(posttest.Feedback.sum()/posttest.Feedback.shape[0])
+    print(list(zip(pretest_acc, traininig_acc, posttest_acc)))
     pd.DataFrame(
         list(zip(pretest_acc, traininig_acc, posttest_acc)),
         columns=['PRETEST', 'TRAINING', 'POSTTEST'],
