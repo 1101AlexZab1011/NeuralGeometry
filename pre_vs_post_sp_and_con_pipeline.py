@@ -128,7 +128,7 @@ if __name__ == '__main__':
         meta = mf.produce_tfrecords((X, Y), **import_opt)
         dataset = mf.Dataset(meta, train_batch=100)
         lf_params = dict(
-            n_latent=16, #number of latent factors
+            n_latent=8, #number of latent factors
             filter_length=50, #convolutional filter length in time samples
             nonlin = tf.nn.elu,
             padding = 'SAME',
