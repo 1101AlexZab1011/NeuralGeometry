@@ -45,6 +45,8 @@ if __name__ == '__main__':
     parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
+    parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
+    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
 
 
     excluded_subjects, \
@@ -58,7 +60,9 @@ if __name__ == '__main__':
         no_params, \
         balance_classes, \
         target_col_name,\
-        kind = vars(parser.parse_args()).values()
+        kind,\
+        crop_from, crop_to = vars(parser.parse_args()).values()
+
 
     import_opt = dict(
         savepath=None,  # path where TFR files will be saved
@@ -120,7 +124,7 @@ if __name__ == '__main__':
         if not preprcessed:
             raise ValueError(f'No data selected. Your config is: {kind = }')
 
-        X = np.concatenate([data.epochs.pick_types(meg='grad').get_data() for data in preprcessed])
+        X = np.concatenate([data.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data() for data in preprcessed])
         Y = np.concatenate(preprocessed_Y)
 
         if balance_classes:
