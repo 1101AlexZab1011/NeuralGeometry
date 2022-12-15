@@ -92,7 +92,7 @@ if __name__ == '__main__':
         encoding='utf-8',
         level=logging.DEBUG
     )
-    logging.info(f'Current classification: {classification_name}')
+    logging.info(f'Current classification: {classification_name_formatted}')
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     for subject_name in iterator:
