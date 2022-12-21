@@ -7,7 +7,7 @@ from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor, Preprocessed
 import numpy as np
 import mneflow as mf
-from utils.models import SimpleNet
+from utils.models import SimpleNet, SimpleNetA
 import tensorflow as tf
 import pandas as pd
 from time import perf_counter
@@ -48,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
+    parser.add_argument('-m', '--model', type=str, help='Model to use', default='simplenet')
 
 
     excluded_subjects, \
@@ -63,7 +64,8 @@ if __name__ == '__main__':
         target_col_name,\
         kind,\
         stage,\
-        crop_from, crop_to = vars(parser.parse_args()).values()
+        crop_from, crop_to,\
+        model_name = vars(parser.parse_args()).values()
 
     import_opt = dict(
         savepath=None,  # path where TFR files will be saved
@@ -150,7 +152,7 @@ if __name__ == '__main__':
             l1=3e-1
         )
 
-        model = SimpleNet(dataset, lf_params)
+        model = SimpleNet(dataset, lf_params) if model_name == 'simplenet' else SimpleNetA(dataset, lf_params)
         model.build()
         t1 = perf_counter()
         model.train(n_epochs=25, eval_step=100, early_stopping=3)
