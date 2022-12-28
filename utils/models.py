@@ -7,7 +7,27 @@ import numpy as np
 import scipy.signal as sl
 from mne import channels, evoked, create_info
 import mne
+import scipy as sp
 from typing import Optional
+
+def eigencentrality(matrix: np.ndarray) -> np.ndarray:
+    """
+    Calculate the eigencentrality of a matrix.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        The matrix to calculate the eigencentrality of.
+
+    Returns
+    -------
+    np.ndarray
+        The eigencentrality of the matrix.
+    """
+    eigenvalues, eigenvectors = np.linalg.eig(matrix)
+    eigencentrality = eigenvectors[:,0]
+
+    return eigencentrality
 
 
 class SimpleNet(mf.models.LFCNN):
@@ -290,7 +310,7 @@ class SimpleNetA(SimpleNet):
 
         self.tconv = LFTConv(
             size=self.specs['n_latent'],
-            nonlin=self.specs['nonlin'],
+            nonlin=tf.identity,
             filter_length=self.specs['filter_length'],
             padding=self.specs['padding'],
             specs=self.specs
@@ -305,7 +325,7 @@ class SimpleNetA(SimpleNet):
             specs=self.specs
         )
 
-        self.envconv_out = self.envconv(self.tconv_out)
+        self.envconv_out = tf.math.abs(self.envconv(self.tconv_out))
         # self.envconv_out = self.tconv_out
         # print(self.envconv_out.shape)
         n_times = self.envconv_out.shape[-2]
@@ -315,8 +335,11 @@ class SimpleNetA(SimpleNet):
             tf.keras.layers.Dense(
                 pooled_dim,
                 use_bias=False,
-                # kernel_regularizer='l1',
+                # kernel_regularizer='l2',
                 activation='sigmoid'
+                # activation='tanh'
+                # activation='linear'
+                # activation='relu'
             )
             for _ in range(self.specs['n_latent'])
         ]
@@ -342,52 +365,57 @@ class SimpleNetA(SimpleNet):
 
     # def plot_temporal
     def branchwise_loss(self, X, y):
-        model_weights_original = self.km.get_weights().copy()
+        self_weights_original = self.km.get_weights().copy()
         base_loss, _ = self.km.evaluate(X, y, verbose=0)
 
         losses = []
         for i in range(self.specs["n_latent"]):
-            model_weights = model_weights_original.copy()
-            spatial_weights = model_weights[0].copy()
-            spatial_biases = model_weights[1].copy()
-            temporal_biases = model_weights[3].copy()
+            self_weights = self_weights_original.copy()
+            spatial_weights = self_weights[0].copy()
+            # spatial_biases = self_weights[1].copy()
+            # temporal_biases = self_weights[3].copy()
             spatial_weights[:, i] = 0
-            spatial_biases[i] = 0
-            temporal_biases[i] = 0
-            model_weights[0] = spatial_weights
-            model_weights[1] = spatial_biases
-            model_weights[3] = temporal_biases
-            self.km.set_weights(model_weights)
+            # spatial_biases[i] = 0
+            # temporal_biases[i] = 0
+            self_weights[0] = spatial_weights
+            # self_weights[1] = spatial_biases
+            # self_weights[3] = temporal_biases
+            self.km.set_weights(self_weights)
             losses.append(self.km.evaluate(X, y, verbose=0)[0])
-        self.km.set_weights(model_weights_original)
+        self.km.set_weights(self_weights_original)
         self.branch_relevance_loss = base_loss - np.array(losses)
 
     def tempwise_loss(self, X, y):
-        model_weights_original = self.km.get_weights().copy()
-        temp_sel_weights = model_weights_original[6:-2]
+        self_weights_original = self.km.get_weights().copy()
+        temp_sel_weights = self_weights_original[3:-2]
         base_loss, _ = self.km.evaluate(X, y, verbose=0)
-        window_size = 5
+        window_size = 1
         componentslosses = list()
         for i_latent, tem_sel_w in enumerate(temp_sel_weights):
             print(f'Processing branch {i_latent}...', end='')
             timelosses = list()
             for i_timepoint in range(0, len(tem_sel_w), window_size):
                 tem_sel_w_copy = tem_sel_w.copy()
-                tem_sel_w_copy[i_timepoint:i_timepoint+min(window_size, len(tem_sel_w) - i_timepoint), :] = -1000
+                tem_sel_w_copy[:i_timepoint, :] = 0
+                tem_sel_w_copy[i_timepoint+min(window_size, len(tem_sel_w) - i_timepoint):, :] = 0
                 temp_sel_weights_copy = temp_sel_weights.copy()
                 temp_sel_weights_copy[i_latent] = tem_sel_w_copy
-                model_weights = model_weights_original.copy()
-                model_weights[6:-2] = temp_sel_weights_copy
-                self.km.set_weights(model_weights)
+                for i in range(len(temp_sel_weights_copy)):
+                    if i != i_latent:
+                        temp_sel_weights_copy[i] = np.zeros_like(temp_sel_weights_copy[i])
+                self_weights = self_weights_original.copy()
+                # sp w = 1, sp b = 2, tp w = 3, tp b = 4, env w = 5, env b = 6
+                # self_weights[6:-2] = temp_sel_weights_copy
+                self_weights[3:-2] = temp_sel_weights_copy
+                self.km.set_weights(self_weights)
                 loss = self.km.evaluate(X, y, verbose=0)[0]
                 timelosses += [loss for _ in range(min(window_size, len(tem_sel_w) - i_timepoint))]
             componentslosses.append(timelosses)
-            print(f'\tDONE, {len(timelosses)}')
-        self.km.set_weights(model_weights_original)
-        self.temp_relevance_loss = - np.array(componentslosses) + base_loss
+            print(f'\tDONE')
+        self.km.set_weights(self_weights_original)
+        self.temp_relevance_loss = - np.array(componentslosses)
 
-    def compute_patterns(self, data_path=None, *, output='patterns'):
-
+    def compute_patterns(self, data_path=None, *, output='patterns', relevances=True):
         if not data_path:
             print("Computing patterns: No path specified, using validation dataset (Default)")
             ds = self.dataset.val
@@ -398,7 +426,7 @@ class SimpleNetA(SimpleNet):
                 test_batch=None,
                 repeat=True
             )
-        elif isinstance(data_path, mneflow.data.Dataset):
+        elif isinstance(data_path, mf.data.Dataset):
             if hasattr(data_path, 'test'):
                 ds = data_path.test
             else:
@@ -416,9 +444,10 @@ class SimpleNetA(SimpleNet):
             [-1, self.dmx.size, self.out_dim]
         )
         self.out_biases = self.fin_fc.b.numpy()
-        self.feature_relevances = self.componentwise_loss(X, y)
-        self.branchwise_loss(X, y)
-        self.tempwise_loss(X, y)
+        if relevances:
+            self.componentwise_loss(X, y)
+            self.branchwise_loss(X, y)
+            self.tempwise_loss(X, y)
 
         # compute temporal convolution layer outputs for vis_dics
         tc_out = self.tconv(self.dmx(X)).numpy()
@@ -502,28 +531,58 @@ class SimpleNetA(SimpleNet):
                 fpattern = z(fpattern)
                 ax2.plot(frange, fpattern - fpattern.min(), color='tab:pink')
 
-        ax2.legend([param.capitalize() for param in params])
-        ax2.set_xlim(0, 100)
-        temp_course = self.temp_relevance_loss[sorting[branch_num]]
-        ax3.plot(
-            np.arange(0, len(temp_course)/self.fs, 1./self.fs),
-            sp.stats.zscore(temp_course)
-        )
-        temp_weight = self.pool_list[branch_num].weights[0].numpy()
         kernel_size = 20
         kernel = np.ones(kernel_size) / kernel_size
-        # temp_weight_convolved = np.convolve(np.abs(temp_weight).max(1), kernel, mode='same')
-        temp_weight_convolved = np.convolve(temp_weight.mean(1), kernel, mode='same')
+        ax2.legend([param.capitalize() for param in params])
+        ax2.set_xlim(0, 100)
+        time_courses_filtered = self.lat_tcs_filt
+        time_courses_env = np.zeros_like(time_courses_filtered)
+        kern = np.squeeze(self.envconv.filters.numpy()).T
+        conv = np.abs(np.convolve(time_courses_filtered[sorting[branch_num], :], kern[sorting[branch_num], :], mode="same"))
+        time_courses_env[sorting[branch_num], :] = conv
+        selected_time_course_plot = time_courses_env.reshape(
+            [-1, self.dataset.h_params['n_t']]
+        )
+
+        selected_w =  self.pool_list[sorting[branch_num]].weights[0].numpy()
+        selected_temp_relevance_loss = self.temp_relevance_loss[sorting[branch_num]]
+
+        kernel_size = 20
+        kernel = np.ones(kernel_size) / kernel_size
+        data = np.cov(selected_w)
+
+        #evoked
+        ax3.plot(
+            np.arange(0, self.dataset.h_params['n_t']/self.fs, 1./self.fs),
+            sp.stats.zscore(selected_time_course_plot.mean(0))
+        )
+        temp_course = self.temp_relevance_loss[sorting[branch_num]]
+        temp_course_convolved = np.convolve(temp_course, kernel, mode='same')
         ax3.plot(
             np.arange(0, len(temp_course)/self.fs, 1./self.fs),
             np.concatenate([
                 [np.nan for _ in range(kernel_size//2)],
-                sp.stats.zscore(temp_weight_convolved[kernel_size//2:-kernel_size//2]) - 5,
+                sp.stats.zscore(temp_course_convolved[kernel_size//2:-kernel_size//2]),
                 [np.nan for _ in range(kernel_size//2)]
             ])
         )
-        ax3.axes.yaxis.set_visible(False)
-        ax3.set_ylim(-8, 3)
+        temp_weight = self.pool_list[sorting[branch_num]].weights[0].numpy()
+        ec = np.real(eigencentrality(data))
+        temp_weight_convolved = np.convolve(ec, kernel, mode='same')
+        ax3.plot(
+            np.arange(0, len(temp_course)/self.fs, 1./self.fs),
+            np.concatenate([
+                [np.nan for _ in range(kernel_size//2)],
+                sp.stats.zscore(temp_weight_convolved[kernel_size//2:-kernel_size//2]),
+                [np.nan for _ in range(kernel_size//2)]
+            ])
+        )
+        # ax3.axes.yaxis.set_visible(False)
+        ax3.set_ylim(-3, 5)
+        ax3.legend(
+            ['Envelope evoked', 'Temporal pattern', 'Loss-based estimate'],
+            loc="upper right"
+        )
 
         fig.suptitle(f'Branch {branch_num}', y=0.95, x=0.2, fontsize=30)
         fig.set_size_inches(15, 5)

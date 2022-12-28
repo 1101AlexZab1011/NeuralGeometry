@@ -56,6 +56,8 @@ if __name__ == '__main__':
     sp = read_pkl(os.path.join(iterator.parameters_path, 'spatial.pkl'))
     tp = read_pkl(os.path.join(iterator.parameters_path, 'temporal.pkl'))
     wf = read_pkl(os.path.join(iterator.parameters_path, 'waveforms.pkl'))
+    cp = read_pkl(os.path.join(iterator.parameters_path, 'compression.pkl'))\
+        if os.path.exists(os.path.join(iterator.parameters_path, 'compression.pkl')) else None
     if sort_ == 'branch_loss':
         order = read_pkl(os.path.join(iterator.parameters_path, 'branch_loss.pkl'))
         order = order - order.min()
@@ -71,6 +73,7 @@ if __name__ == '__main__':
         tp,
         wf,
         epochs.info,
+        cp,
         summarize=order,
         logscale=False,
         temp_params=['input', 'output', 'response', 'pattern'],

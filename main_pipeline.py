@@ -12,7 +12,8 @@ import tensorflow as tf
 import pandas as pd
 from time import perf_counter
 from deepmeg.params import save_parameters, compute_temporal_parameters, compute_waveforms, \
-    Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order
+    Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order, \
+    compute_compression_parameters, CompressionParameters
 import re
 import logging
 from utils import balance
@@ -152,7 +153,14 @@ if __name__ == '__main__':
             l1=3e-1
         )
 
-        model = SimpleNet(dataset, lf_params) if model_name == 'simplenet' else SimpleNetA(dataset, lf_params)
+        match model_name:
+            case 'simplenet':
+                model = SimpleNet(dataset, lf_params)
+            case 'lfcnn':
+                model = mf.models.LFCNN(dataset, lf_params)
+            case 'simplenetA':
+                model = SimpleNetA(dataset, lf_params)
+
         model.build()
         t1 = perf_counter()
         model.train(n_epochs=25, eval_step=100, early_stopping=3)
@@ -206,17 +214,18 @@ if __name__ == '__main__':
                 os.path.join(iterator.parameters_path, 'temporal.pkl'),
                 'temporal'
             )
-            save_parameters(
-                ComponentsOrder(
-                    get_order(*model._sorting('l2')),
-                    get_order(*model._sorting('compwise_loss')),
-                    get_order(*model._sorting('weight')),
-                    get_order(*model._sorting('output_corr')),
-                    get_order(*model._sorting('weight_corr')),
-                ),
-                os.path.join(iterator.parameters_path, 'sorting.pkl'),
-                'sorting'
-            )
+            if model_name == 'simplenetA':
+                temp_relevance_loss, eigencentrality_, time_courses_env, compression_weights = compute_compression_parameters(model)
+                save_parameters(
+                    CompressionParameters(
+                        temp_relevance_loss,
+                        eigencentrality_,
+                        time_courses_env,
+                        compression_weights
+                    ),
+                    os.path.join(iterator.parameters_path, 'compression.pkl'),
+                    'compression'
+                )
 
         perf_table_path = os.path.join(
             iterator.history_path,
