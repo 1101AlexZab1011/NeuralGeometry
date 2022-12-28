@@ -163,7 +163,7 @@ if __name__ == '__main__':
             times = (1 / float(model.dataset.h_params['fs'])) *\
                 np.arange(model.dataset.h_params['n_t'])
             patterns = model.patterns.copy()
-            model.compute_patterns(meta['test_paths'], output='filters')
+            model.compute_patterns(meta['test_paths'], output='filters', relevances=False)
             filters = model.patterns.copy()
             franges, finputs, foutputs, fresponces, fpatterns = compute_temporal_parameters(model)
             induced, induced_filt, times, time_courses = compute_waveforms(model)
