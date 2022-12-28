@@ -7,7 +7,7 @@ from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor, Preprocessed
 import numpy as np
 import mneflow as mf
-from utils.models import SimpleNet
+from utils.models import SimpleNetA
 import tensorflow as tf
 import pandas as pd
 from time import perf_counter
@@ -136,7 +136,7 @@ if __name__ == '__main__':
             l1=3e-1
         )
 
-        model = SimpleNet(dataset, lf_params)
+        model = SimpleNetA(dataset, lf_params)
         model.build()
         t1 = perf_counter()
         model.train(n_epochs=25, eval_step=100, early_stopping=3)
