@@ -417,6 +417,7 @@ class SimpleNetA(SimpleNet):
             raise AttributeError('Specify dataset or data path.')
 
         X, y = [row for row in ds.take(1)][0]
+        lat_tcs = self.dmx(X)
 
         self.out_w_flat = self.fin_fc.w.numpy()
         self.out_weights = np.reshape(
@@ -461,7 +462,6 @@ class SimpleNetA(SimpleNet):
             self.patterns = demx
 
         # self.lat_tcs = np.dot(demx.T, X.T)
-        lat_tcs = self.dmx(X)
         lat_tcs_filt = np.squeeze(self.tconv(lat_tcs).numpy())
         self.lat_tcs = np.transpose(np.squeeze(lat_tcs.numpy()), (0, 2, 1))
         self.lat_tcs_filt = np.transpose(lat_tcs_filt, (0, 2, 1))
@@ -491,7 +491,7 @@ class SimpleNetA(SimpleNet):
         self.fs = self.dataset.h_params['fs']
 
         out_filter = filters[:, branch_num]
-        _, psd = sl.welch(self.lat_tcs[sorting[branch_num]], fs=self.fs, nperseg=self.fs * 2)
+        _, psd = sl.welch(np.reshape(self.lat_tcs, (self.lat_tcs.shape[1], -1))[sorting[branch_num]], fs=self.fs, nperseg=self.fs * 2)
         w, h = (lambda w, h: (w, h))(*sl.freqz(out_filter, 1, worN=self.fs))
         frange = w / np.pi * self.fs / 2
         z = lambda x: (x - x.mean())/x.std()
@@ -523,9 +523,9 @@ class SimpleNetA(SimpleNet):
         # kern = np.squeeze(self.envconv.filters.numpy()).T
         # conv = np.abs(np.convolve(time_courses_filtered[sorting[branch_num], :], kern[sorting[branch_num], :], mode="same"))
         # time_courses_env[sorting[branch_num], :] = conv
-        selected_time_course_plot = time_courses_filtered.reshape(
-            [-1, self.specs['n_latent'], self.dataset.h_params['n_t']]
-        )
+        selected_time_course_plot = time_courses_filtered#.reshape(
+        #     [-1, self.specs['n_latent'], self.dataset.h_params['n_t']]
+        # )
 
         selected_w =  self.pool_list[sorting[branch_num]].weights[0].numpy()
         selected_temp_relevance_loss = self.temp_relevance_loss[sorting[branch_num]]

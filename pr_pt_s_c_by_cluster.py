@@ -157,17 +157,12 @@ if __name__ == '__main__':
         if not no_params:
             logging.debug('Computing parameters')
             model.compute_patterns(meta['test_paths'])
-            nt = model.dataset.h_params['n_t']
-            time_courses = np.squeeze(model.lat_tcs.reshape([model.specs['n_latent'], -1, nt]))
-            time_courses_filt = np.squeeze(model.lat_tcs_filt.reshape([model.specs['n_latent'], -1, nt]))
-            times = (1 / float(model.dataset.h_params['fs'])) *\
-                np.arange(model.dataset.h_params['n_t'])
             patterns = model.patterns.copy()
             model.compute_patterns(meta['test_paths'], output='filters', relevances=False)
             filters = model.patterns.copy()
             franges, finputs, foutputs, fresponces, fpatterns = compute_temporal_parameters(model)
-            induced, induced_filt, times, time_courses = compute_waveforms(model)
-            temp_relevance_loss, eigencentrality_, time_courses_env, compression_weights = compute_compression_parameters(model)
+            induced, induced_filt, times, time_courses, time_courses_filt = compute_waveforms(model)
+            temp_relevance_loss, compression_weights = compute_compression_parameters(model)
 
             save_parameters(
                 model.branch_relevance_loss,
@@ -194,8 +189,6 @@ if __name__ == '__main__':
             save_parameters(
                 CompressionParameters(
                     temp_relevance_loss,
-                    eigencentrality_,
-                    time_courses_env,
                     compression_weights
                 ),
                 os.path.join(iterator.parameters_path, 'compression.pkl'),

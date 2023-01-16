@@ -7,12 +7,13 @@ from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor, Preprocessed
 import numpy as np
 import mneflow as mf
-from utils.models import SimpleNet
+from utils.models import SimpleNetA
 import tensorflow as tf
 import pandas as pd
 from time import perf_counter
 from deepmeg.params import save_parameters, compute_temporal_parameters, compute_waveforms, \
-    Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order
+    Predictions, WaveForms, TemporalParameters, SpatialParameters, ComponentsOrder, get_order, \
+    compute_compression_parameters, CompressionParameters
 import re
 import logging
 from utils import balance
@@ -130,7 +131,7 @@ if __name__ == '__main__':
             l1=3e-1
         )
 
-        model = SimpleNet(dataset, lf_params)
+        model = SimpleNetA(dataset, lf_params)
         model.build()
         t1 = perf_counter()
         model.train(n_epochs=25, eval_step=100, early_stopping=3)
@@ -151,16 +152,12 @@ if __name__ == '__main__':
         if not no_params:
             logging.debug('Computing parameters')
             model.compute_patterns(meta['test_paths'])
-            nt = model.dataset.h_params['n_t']
-            time_courses = np.squeeze(model.lat_tcs.reshape([model.specs['n_latent'], -1, nt]))
-            time_courses_filt = np.squeeze(model.lat_tcs_filt.reshape([model.specs['n_latent'], -1, nt]))
-            times = (1 / float(model.dataset.h_params['fs'])) *\
-                np.arange(model.dataset.h_params['n_t'])
             patterns = model.patterns.copy()
-            model.compute_patterns(meta['test_paths'], output='filters')
+            model.compute_patterns(meta['test_paths'], output='filters', relevances=False)
             filters = model.patterns.copy()
             franges, finputs, foutputs, fresponces, fpatterns = compute_temporal_parameters(model)
-            induced, induced_filt, times, time_courses = compute_waveforms(model)
+            induced, induced_filt, times, time_courses, time_courses_filt = compute_waveforms(model)
+            temp_relevance_loss, compression_weights = compute_compression_parameters(model)
 
             save_parameters(
                 model.branch_relevance_loss,
@@ -185,15 +182,12 @@ if __name__ == '__main__':
                 'temporal'
             )
             save_parameters(
-                ComponentsOrder(
-                    get_order(*model._sorting('l2')),
-                    get_order(*model._sorting('compwise_loss')),
-                    get_order(*model._sorting('weight')),
-                    get_order(*model._sorting('output_corr')),
-                    get_order(*model._sorting('weight_corr')),
+                CompressionParameters(
+                    temp_relevance_loss,
+                    compression_weights
                 ),
-                os.path.join(iterator.parameters_path, 'sorting.pkl'),
-                'sorting'
+                os.path.join(iterator.parameters_path, 'compression.pkl'),
+                'compression'
             )
 
         perf_table_path = os.path.join(
