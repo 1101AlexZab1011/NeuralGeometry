@@ -43,25 +43,16 @@ class SimpleNet(mf.models.LFCNN):
 
         self.tconv = LFTConv(
             size=self.specs['n_latent'],
-            nonlin=self.specs['nonlin'],
+            nonlin=tf.identity,
             filter_length=self.specs['filter_length'],
             padding=self.specs['padding'],
             specs=self.specs
         )
         self.tconv_out = self.tconv(self.dmx_out)
 
-        self.envconv = LFTConv(
-            size=self.specs['n_latent'],
-            nonlin=self.specs['nonlin'],
-            filter_length=self.specs['filter_length'],
-            padding=self.specs['padding'],
-            specs=self.specs
-        )
-
-        self.envconv_out = self.envconv(self.tconv_out)
         self.pool = lambda X: X[:, :, ::self.specs['pooling'], :]
 
-        self.pooled = self.pool(self.envconv_out)
+        self.pooled = self.pool(self.tconv_out)
 
         dropout = Dropout(
             self.specs['dropout'],
@@ -135,11 +126,15 @@ class SimpleNet(mf.models.LFCNN):
                         X_filt[:, i_ch] = np.convolve(x, kern[i_comp, :], mode="same")
                     patterns.append(np.cov(X_filt.T) @ demx[:, i_comp])
                 self.patterns = np.array(patterns).T
-                self.lat_tcs_filt = np.dot(demx.T, X_filt.T)
+                # self.lat_tcs_filt = np.dot(demx.T, X_filt.T)
         else:
             self.patterns = demx
 
-        self.lat_tcs = np.dot(demx.T, X.T)
+        # self.lat_tcs = np.dot(demx.T, X.T)
+        lat_tcs = self.dmx(X)
+        lat_tcs_filt = np.squeeze(self.tconv(lat_tcs).numpy())
+        self.lat_tcs = np.transpose(np.squeeze(lat_tcs.numpy()), (0, 2, 1))
+        self.lat_tcs_filt = np.transpose(lat_tcs_filt, (0, 2, 1))
 
         del X
 
@@ -221,27 +216,24 @@ class SimpleNet(mf.models.LFCNN):
                 )
 
     def branchwise_loss(self, X, y):
-        model_weights_original = self.km.get_weights().copy()
+        self_weights_original = self.km.get_weights().copy()
         base_loss, _ = self.km.evaluate(X, y, verbose=0)
 
         losses = []
         for i in range(self.specs["n_latent"]):
-            model_weights = model_weights_original.copy()
-            spatial_weights = model_weights[0].copy()
-            spatial_biases = model_weights[1].copy()
-            temporal_biases = model_weights[3].copy()
-            env_biases = model_weights[5].copy()
+            self_weights = self_weights_original.copy()
+            spatial_weights = self_weights[0].copy()
+            # spatial_biases = self_weights[1].copy()
+            # temporal_biases = self_weights[3].copy()
             spatial_weights[:, i] = 0
-            spatial_biases[i] = 0
-            temporal_biases[i] = 0
-            env_biases[i] = 0
-            model_weights[0] = spatial_weights
-            model_weights[1] = spatial_biases
-            model_weights[3] = temporal_biases
-            model_weights[5] = env_biases
-            self.km.set_weights(model_weights)
+            # spatial_biases[i] = 0
+            # temporal_biases[i] = 0
+            self_weights[0] = spatial_weights
+            # self_weights[1] = spatial_biases
+            # self_weights[3] = temporal_biases
+            self.km.set_weights(self_weights)
             losses.append(self.km.evaluate(X, y, verbose=0)[0])
-        self.km.set_weights(model_weights_original)
+        self.km.set_weights(self_weights_original)
         self.branch_relevance_loss = base_loss - np.array(losses)
 
     def plot_branch(
@@ -317,39 +309,29 @@ class SimpleNetA(SimpleNet):
         )
         self.tconv_out = self.tconv(self.dmx_out)
 
-        self.envconv = LFTConv(
-            size=self.specs['n_latent'],
-            nonlin=self.specs['nonlin'],
-            filter_length=self.specs['filter_length'],
-            padding=self.specs['padding'],
-            specs=self.specs
-        )
-
-        self.envconv_out = tf.math.abs(self.envconv(self.tconv_out))
-        # self.envconv_out = self.tconv_out
-        # print(self.envconv_out.shape)
-        n_times = self.envconv_out.shape[-2]
+        n_times = self.tconv_out.shape[-2]
         pooled_dim = n_times // self.specs['pooling']
-        # self.pool = lambda X: X[:, :, ::self.specs['pooling'], :]
         self.pool_list = [
             tf.keras.layers.Dense(
                 pooled_dim,
                 use_bias=False,
-                # kernel_regularizer='l2',
                 activation='sigmoid'
-                # activation='tanh'
-                # activation='linear'
-                # activation='relu'
             )
             for _ in range(self.specs['n_latent'])
         ]
-        # self.pool = DepthwiseSelectTimepointsLayer(10)
-        pooled = list()
-        for i, pooling in enumerate(self.pool_list):
-            pooled.append(pooling(self.envconv_out[:, :, :, i]))
+        # pooled = list()
+        # for i, pooling in enumerate(self.pool_list):
+        #     pooled.append(pooling(self.tconv_out[:, :, :, i]))
 
-        self.pooled = tf.stack(pooled, -1)
-        # self.pooled = self.pool(self.envconv_out)
+        # self.pooled = tf.stack(pooled, -1)
+        self.pool = lambda x: tf.stack(
+            [
+                pooling(x[:, :, :, i])
+                for i, pooling in enumerate(self.pool_list)
+            ],
+            -1
+        )
+        self.pooled = self.pool(self.tconv_out)
 
         dropout = Dropout(
             self.specs['dropout'],
@@ -387,7 +369,7 @@ class SimpleNetA(SimpleNet):
 
     def tempwise_loss(self, X, y):
         self_weights_original = self.km.get_weights().copy()
-        temp_sel_weights = self_weights_original[3:-2]
+        temp_sel_weights = self_weights_original[2:-2]
         base_loss, _ = self.km.evaluate(X, y, verbose=0)
         window_size = 1
         componentslosses = list()
@@ -404,9 +386,7 @@ class SimpleNetA(SimpleNet):
                     if i != i_latent:
                         temp_sel_weights_copy[i] = np.zeros_like(temp_sel_weights_copy[i])
                 self_weights = self_weights_original.copy()
-                # sp w = 1, sp b = 2, tp w = 3, tp b = 4, env w = 5, env b = 6
-                # self_weights[6:-2] = temp_sel_weights_copy
-                self_weights[3:-2] = temp_sel_weights_copy
+                self_weights[2:-2] = temp_sel_weights_copy
                 self.km.set_weights(self_weights)
                 loss = self.km.evaluate(X, y, verbose=0)[0]
                 timelosses += [loss for _ in range(min(window_size, len(tem_sel_w) - i_timepoint))]
@@ -450,7 +430,7 @@ class SimpleNetA(SimpleNet):
             self.tempwise_loss(X, y)
 
         # compute temporal convolution layer outputs for vis_dics
-        tc_out = self.tconv(self.dmx(X)).numpy()
+        tc_out = self.pool(self.tconv(self.dmx(X)).numpy())
 
         # compute data covariance
         X = X - tf.reduce_mean(X, axis=-2, keepdims=True)
@@ -476,17 +456,20 @@ class SimpleNetA(SimpleNet):
                         X_filt[:, i_ch] = np.convolve(x, kern[i_comp, :], mode="same")
                     patterns.append(np.cov(X_filt.T) @ demx[:, i_comp])
                 self.patterns = np.array(patterns).T
-                self.lat_tcs_filt = np.dot(demx.T, X_filt.T)
+                # self.lat_tcs_filt = np.dot(demx.T, X_filt.T)
         else:
             self.patterns = demx
 
-        self.lat_tcs = np.dot(demx.T, X.T)
+        # self.lat_tcs = np.dot(demx.T, X.T)
+        lat_tcs = self.dmx(X)
+        lat_tcs_filt = np.squeeze(self.tconv(lat_tcs).numpy())
+        self.lat_tcs = np.transpose(np.squeeze(lat_tcs.numpy()), (0, 2, 1))
+        self.lat_tcs_filt = np.transpose(lat_tcs_filt, (0, 2, 1))
 
         del X
 
         #  Temporal conv stuff
         self.filters = kern.T
-        self.tc_out = np.squeeze(tc_out)
 
     def plot_branch(
         self,
@@ -508,14 +491,14 @@ class SimpleNetA(SimpleNet):
         self.fs = self.dataset.h_params['fs']
 
         out_filter = filters[:, branch_num]
-        _, psd = sl.welch(self.lat_tcs[branch_num], fs=self.fs, nperseg=self.fs * 2)
+        _, psd = sl.welch(self.lat_tcs[sorting[branch_num]], fs=self.fs, nperseg=self.fs * 2)
         w, h = (lambda w, h: (w, h))(*sl.freqz(out_filter, 1, worN=self.fs))
         frange = w / np.pi * self.fs / 2
         z = lambda x: (x - x.mean())/x.std()
+        finput = psd[:-1]
 
         for param in params:
             if param == 'input':
-                finput = psd[:-1]
                 finput = z(finput)
                 ax2.plot(frange, finput - finput.min(), color='tab:blue')
             elif param == 'output':
@@ -536,12 +519,12 @@ class SimpleNetA(SimpleNet):
         ax2.legend([param.capitalize() for param in params])
         ax2.set_xlim(0, 100)
         time_courses_filtered = self.lat_tcs_filt
-        time_courses_env = np.zeros_like(time_courses_filtered)
-        kern = np.squeeze(self.envconv.filters.numpy()).T
-        conv = np.abs(np.convolve(time_courses_filtered[sorting[branch_num], :], kern[sorting[branch_num], :], mode="same"))
-        time_courses_env[sorting[branch_num], :] = conv
-        selected_time_course_plot = time_courses_env.reshape(
-            [-1, self.dataset.h_params['n_t']]
+        # time_courses_env = np.zeros_like(time_courses_filtered)
+        # kern = np.squeeze(self.envconv.filters.numpy()).T
+        # conv = np.abs(np.convolve(time_courses_filtered[sorting[branch_num], :], kern[sorting[branch_num], :], mode="same"))
+        # time_courses_env[sorting[branch_num], :] = conv
+        selected_time_course_plot = time_courses_filtered.reshape(
+            [-1, self.specs['n_latent'], self.dataset.h_params['n_t']]
         )
 
         selected_w =  self.pool_list[sorting[branch_num]].weights[0].numpy()
@@ -554,7 +537,7 @@ class SimpleNetA(SimpleNet):
         #evoked
         ax3.plot(
             np.arange(0, self.dataset.h_params['n_t']/self.fs, 1./self.fs),
-            sp.stats.zscore(selected_time_course_plot.mean(0))
+            sp.stats.zscore(selected_time_course_plot.mean(0)[sorting[branch_num]])
         )
         temp_course = self.temp_relevance_loss[sorting[branch_num]]
         temp_course_convolved = np.convolve(temp_course, kernel, mode='same')
@@ -580,7 +563,7 @@ class SimpleNetA(SimpleNet):
         # ax3.axes.yaxis.set_visible(False)
         ax3.set_ylim(-3, 5)
         ax3.legend(
-            ['Envelope evoked', 'Temporal pattern', 'Loss-based estimate'],
+            ['Envelope evoked', 'Loss-based estimate', 'Temporal pattern'],
             loc="upper right"
         )
 
@@ -596,4 +579,3 @@ class SimpleNetA(SimpleNet):
         )
 
         return fig
-

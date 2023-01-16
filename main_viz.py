@@ -58,6 +58,7 @@ if __name__ == '__main__':
     wf = read_pkl(os.path.join(iterator.parameters_path, 'waveforms.pkl'))
     cp = read_pkl(os.path.join(iterator.parameters_path, 'compression.pkl'))\
         if os.path.exists(os.path.join(iterator.parameters_path, 'compression.pkl')) else None
+
     if sort_ == 'branch_loss':
         order = read_pkl(os.path.join(iterator.parameters_path, 'branch_loss.pkl'))
         order = order - order.min()
