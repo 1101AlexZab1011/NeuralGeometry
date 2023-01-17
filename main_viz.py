@@ -78,7 +78,6 @@ if __name__ == '__main__':
         summarize=order,
         logscale=False,
         temp_params=['input', 'output', 'response', 'pattern'],
-        # shift_induced_times = -epochs.times[0],
-        filtered_induced=filt_induced
+        shift_induced_times = -(epochs.times[0] + 40/200), # 40 is baseline interval, 200 is sfreq. Hardcode
     )
     plt.show()
