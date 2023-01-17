@@ -44,6 +44,8 @@ if __name__ == '__main__':
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
+    parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
+    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
 
     excluded_subjects, \
         from_, \
@@ -54,7 +56,8 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
-        balance_classes = vars(parser.parse_args()).values()
+        balance_classes, \
+        crop_from, crop_to = vars(parser.parse_args()).values()
 
     import_opt = dict(
         savepath=None,  # path where TFR files will be saved
@@ -106,10 +109,10 @@ if __name__ == '__main__':
         con_data_pre: Preprocessed = con_preprocessor(iterator.get_data(STAGE.PRETEST))
         con_data_post: Preprocessed  = con_preprocessor(iterator.get_data(STAGE.POSTTEST))
         X = np.concatenate([
-            sp_data_pre.epochs.pick_types(meg='grad').get_data(),
-            sp_data_post.epochs.pick_types(meg='grad').get_data(),
-            con_data_pre.epochs.pick_types(meg='grad').get_data(),
-            con_data_post.epochs.pick_types(meg='grad').get_data()
+            sp_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+            sp_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+            con_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+            con_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data()
         ])
 
         Y = np.concatenate([
