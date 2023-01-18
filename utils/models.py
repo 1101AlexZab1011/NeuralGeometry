@@ -89,6 +89,7 @@ class SimpleNet(mf.models.LFCNN):
             raise AttributeError('Specify dataset or data path.')
 
         X, y = [row for row in ds.take(1)][0]
+        lat_tcs = self.dmx(X)
 
         self.out_w_flat = self.fin_fc.w.numpy()
         self.out_weights = np.reshape(
@@ -131,7 +132,6 @@ class SimpleNet(mf.models.LFCNN):
             self.patterns = demx
 
         # self.lat_tcs = np.dot(demx.T, X.T)
-        lat_tcs = self.dmx(X)
         lat_tcs_filt = np.squeeze(self.tconv(lat_tcs).numpy())
         self.lat_tcs = np.transpose(np.squeeze(lat_tcs.numpy()), (0, 2, 1))
         self.lat_tcs_filt = np.transpose(lat_tcs_filt, (0, 2, 1))

@@ -211,12 +211,10 @@ if __name__ == '__main__':
                 'temporal'
             )
             if model_name == 'simplenetA':
-                temp_relevance_loss, eigencentrality_, time_courses_env, compression_weights = compute_compression_parameters(model)
+                temp_relevance_loss, compression_weights = compute_compression_parameters(model)
                 save_parameters(
                     CompressionParameters(
                         temp_relevance_loss,
-                        eigencentrality_,
-                        time_courses_env,
                         compression_weights
                     ),
                     os.path.join(iterator.parameters_path, 'compression.pkl'),
