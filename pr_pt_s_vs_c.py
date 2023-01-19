@@ -112,11 +112,11 @@ if __name__ == '__main__':
             if 'pre' in stage:
                 data_pre = preprocessor(iterator.get_data(STAGE.PRETEST))
                 preprocessed.append(data_pre)
-                labels.appned(label_gen((len(data_pre.clusters),)))
+                labels.append(label_gen((len(data_pre.clusters),)))
             if 'post' in stage:
                 data_post = preprocessor(iterator.get_data(STAGE.POSTTEST))
                 preprocessed.append(data_post)
-                labels.appned(label_gen((len(data_post.clusters),)))
+                labels.append(label_gen((len(data_post.clusters),)))
 
         X = np.concatenate([
             preproc.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data()
