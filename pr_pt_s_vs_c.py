@@ -44,6 +44,7 @@ if __name__ == '__main__':
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
+    parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
 
@@ -57,6 +58,7 @@ if __name__ == '__main__':
         project_name, \
         no_params, \
         balance_classes, \
+        stage,\
         crop_from, crop_to = vars(parser.parse_args()).values()
 
     import_opt = dict(
@@ -104,23 +106,41 @@ if __name__ == '__main__':
 
         sp_preprocessor = BasicPreprocessor(103, 200)
         con_preprocessor = BasicPreprocessor(103, 200, 2)
-        sp_data_pre: Preprocessed = sp_preprocessor(iterator.get_data(STAGE.PRETEST))
-        sp_data_post: Preprocessed  = sp_preprocessor(iterator.get_data(STAGE.POSTTEST))
-        con_data_pre: Preprocessed = con_preprocessor(iterator.get_data(STAGE.PRETEST))
-        con_data_post: Preprocessed  = con_preprocessor(iterator.get_data(STAGE.POSTTEST))
-        X = np.concatenate([
-            sp_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
-            sp_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
-            con_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
-            con_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data()
-        ])
+        preprocessed = list()
+        labels = list()
+        for preprocessor, label_gen in zip([sp_preprocessor, con_preprocessor], [np.zeros, np.ones]):
+            if 'pre' in stage:
+                data_pre = preprocessor(iterator.get_data(STAGE.PRETEST))
+                preprocessed.append(data_pre)
+                labels.appned(label_gen((len(data_pre.clusters),)))
+            if 'post' in stage:
+                data_post = preprocessor(iterator.get_data(STAGE.POSTTEST))
+                preprocessed.append(data_post)
+                labels.appned(label_gen((len(data_post.clusters),)))
 
-        Y = np.concatenate([
-            np.zeros((len(sp_data_pre.clusters),)),
-            np.zeros((len(sp_data_post.clusters),)),
-            np.ones((len(con_data_pre.clusters),)),
-            np.ones((len(con_data_post.clusters),))
+        X = np.concatenate([
+            preproc.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data()
+            for preproc in preprocessed
         ])
+        Y = np.concatenate(labels)
+
+        # sp_data_pre: Preprocessed = sp_preprocessor(iterator.get_data(STAGE.PRETEST))
+        # sp_data_post: Preprocessed  = sp_preprocessor(iterator.get_data(STAGE.POSTTEST))
+        # con_data_pre: Preprocessed = con_preprocessor(iterator.get_data(STAGE.PRETEST))
+        # con_data_post: Preprocessed  = con_preprocessor(iterator.get_data(STAGE.POSTTEST))
+        # X = np.concatenate([
+        #     sp_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+        #     sp_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+        #     con_data_pre.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data(),
+        #     con_data_post.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data()
+        # ])
+
+        # Y = np.concatenate([
+        #     np.zeros((len(sp_data_pre.clusters),)),
+        #     np.zeros((len(sp_data_post.clusters),)),
+        #     np.ones((len(con_data_pre.clusters),)),
+        #     np.ones((len(con_data_post.clusters),))
+        # ])
 
         if balance_classes:
             X, Y = balance(X, Y)
