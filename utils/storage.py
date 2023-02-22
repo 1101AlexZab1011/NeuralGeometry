@@ -118,19 +118,17 @@ class DLStorageIterator(BasicStorageIterator):
     def select_subject(self, subject_name: str):
         super().select_subject(subject_name)
         self.subject_results_path = os.path.join(self.results_path, subject_name, self.name)
-        self.network_out_path = os.path.join(self.subject_results_path, 'TFR')
-        self.parameters_path = os.path.join(self.subject_results_path, 'Parameters')
-        self.predictions_path = os.path.join(self.subject_results_path, 'Predictions')
+        self.dataset_path = os.path.join(self.subject_results_path, 'dataset.pt')
+        self.dataset_content_path = os.path.join(self.subject_results_path, 'dataset_content')
+        self.parameters_path = os.path.join(self.subject_results_path, 'params.pkl')
+        self.predictions_path = os.path.join(self.subject_results_path, 'preds.pkl')
         self.history_path = os.path.join(
             os.path.abspath(os.path.join(self.subjects_dir, os.pardir)),
             'History'
         )
-
         check_path(
             os.path.abspath(os.path.join(self.subject_results_path, os.pardir)),
             self.subject_results_path,
-            self.network_out_path,
-            self.parameters_path,
-            self.predictions_path,
+            self.dataset_content_path,
             self.history_path
         )
