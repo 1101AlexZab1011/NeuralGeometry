@@ -204,7 +204,7 @@ if __name__ == '__main__':
             metric,
             callbacks=[
                 PrintingCallback(),
-                # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
