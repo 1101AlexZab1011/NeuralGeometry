@@ -123,7 +123,7 @@ if __name__ == '__main__':
             data.
             epochs.
             pick_types(meg='grad').
-            apply_baseline((bl_from, bl_to)).
+            # apply_baseline((bl_from, bl_to)).
             crop(crop_from, crop_to).
             get_data()
             for data in preprcessed
