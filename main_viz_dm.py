@@ -5,13 +5,12 @@ import matplotlib as mpl
 import argparse
 import os
 from utils.storage import DLStorageIterator
-from deepmeg.params import LFCNNParameters
-import mne
+from deepmeg.utils.params import LFCNNParameters
 import matplotlib.pyplot as plt
 
 
 if __name__ == '__main__':
-    mpl.use('agg')
+    # mpl.use('agg')
     parser = argparse.ArgumentParser(
         description='The script for visualising spatial and spectral patterns learned by a LFCNN-like network'
     )

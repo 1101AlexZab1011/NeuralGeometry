@@ -11,12 +11,13 @@ from time import perf_counter
 import re
 import logging
 from utils import balance
-from deepmeg.models.interpretable import LFCNN
-from deepmeg.interpreters import LFCNNInterpreter
+from deepmeg.models.interpretable import LFCNN, SPIRIT, HilbertNet
+from deepmeg.models.experimental import FourierSPIRIT, CanonicalSPIRIT
+from deepmeg.interpreters import LFCNNInterpreter, SPIRITInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg
-from deepmeg.utils.params import Predictions, save, LFCNNParameters
+from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
@@ -139,6 +140,58 @@ if __name__ == '__main__':
                     pool_factor=10,
                     n_outputs=Y.shape[1]
                 )
+                interpretation = LFCNNInterpreter
+                parametrizer = LFCNNParameters
+            case 'hilbert':
+                model = HilbertNet(
+                    n_channels=X.shape[1],
+                    n_latent=8,
+                    n_times=X.shape[-1],
+                    filter_size=50,
+                    pool_factor=10,
+                    n_outputs=Y.shape[1]
+                )
+                interpretation = LFCNNInterpreter
+                parametrizer = LFCNNParameters
+            case 'spirit':
+                model = SPIRIT(
+                    n_channels=X.shape[1],
+                    n_latent=8,
+                    n_times=X.shape[-1],
+                    window_size=20,
+                    latent_dim=10,
+                    filter_size=50,
+                    pool_factor=10,
+                    n_outputs=Y.shape[1]
+                )
+                interpretation = SPIRITInterpreter
+                parametrizer = SPIRITParameters
+            case 'fourier':
+                model = FourierSPIRIT(
+                    n_channels=X.shape[1],
+                    n_latent=8,
+                    n_times=X.shape[-1],
+                    window_size=20,
+                    latent_dim=10,
+                    filter_size=50,
+                    pool_factor=10,
+                    n_outputs=Y.shape[1]
+                )
+                interpretation = SPIRITInterpreter
+                parametrizer = SPIRITParameters
+            case 'canonical':
+                model = CanonicalSPIRIT(
+                    n_channels=X.shape[1],
+                    n_latent=8,
+                    n_times=X.shape[-1],
+                    window_size=20,
+                    latent_dim=10,
+                    filter_size=50,
+                    pool_factor=10,
+                    n_outputs=Y.shape[1]
+                )
+                interpretation = SPIRITInterpreter
+                parametrizer = SPIRITParameters
             case _:
                 raise ValueError(f'Invalid model name: {model_name}')
 
@@ -151,7 +204,7 @@ if __name__ == '__main__':
             metric,
             callbacks=[
                 PrintingCallback(),
-                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
@@ -186,7 +239,7 @@ if __name__ == '__main__':
 
         if not no_params:
             logging.debug('Computing parameters')
-            params = LFCNNParameters(LFCNNInterpreter(model, test, info))
+            params = parametrizer(interpretation(model, test, info))
             params.save(iterator.parameters_path)
 
         perf_table_path = os.path.join(
