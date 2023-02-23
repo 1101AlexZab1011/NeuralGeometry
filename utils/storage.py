@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 import numpy as np
 import mne
-from alltools.storage_management import check_path
+from deepmeg.utils import check_path
 import copy
 from typing import Optional, Callable
 
