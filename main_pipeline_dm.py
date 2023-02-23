@@ -221,7 +221,8 @@ if __name__ == '__main__':
                         'unmixing_layer.weight', 'temp_conv.weight',
                     ], lambdas=.01
                 )
-            ]
+            ],
+            device='cpu'
         )
 
         t1 = perf_counter()
