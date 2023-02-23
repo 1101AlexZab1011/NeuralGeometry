@@ -51,8 +51,8 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
     parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
-    parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
-    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=0.)
+    parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
+    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
     parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             data.
             epochs.
             pick_types(meg='grad').
-            # apply_baseline((bl_from, bl_to)).
+            apply_baseline((bl_from, bl_to)).
             crop(crop_from, crop_to).
             get_data()
             for data in preprcessed
