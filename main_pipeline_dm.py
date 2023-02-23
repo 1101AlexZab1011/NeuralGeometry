@@ -52,8 +52,10 @@ if __name__ == '__main__':
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
     parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=None)
-    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
-    parser.add_argument('-m', '--model', type=str, help='Model to use', default='simplenet')
+    parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=0.)
+    parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
+    parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
+    parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
 
 
     excluded_subjects, \
@@ -70,6 +72,7 @@ if __name__ == '__main__':
         kind,\
         stage,\
         crop_from, crop_to,\
+        bl_from, bl_to,\
         model_name = vars(parser.parse_args()).values()
 
     classification_name_formatted = "_".join(list(filter(
@@ -115,8 +118,16 @@ if __name__ == '__main__':
         if not preprcessed:
             raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
 
-        info = preprcessed[0].epochs.pick_types(meg='grad').crop(crop_from, crop_to).info
-        X = np.concatenate([data.epochs.pick_types(meg='grad').crop(crop_from, crop_to).get_data() for data in preprcessed])
+        info = preprcessed[0].epochs.pick_types(meg='grad').info
+        X = np.concatenate([
+            data.
+            epochs.
+            pick_types(meg='grad').
+            apply_baseline((bl_from, bl_to)).
+            crop(crop_from, crop_to).
+            get_data()
+            for data in preprcessed
+            ])
         Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
 
         if balance_classes:
