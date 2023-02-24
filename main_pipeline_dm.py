@@ -77,6 +77,8 @@ if __name__ == '__main__':
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name = vars(parser.parse_args()).values()
+    print(from_, to)
+    raise OSError
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
