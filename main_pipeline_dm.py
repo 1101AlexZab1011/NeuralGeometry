@@ -51,8 +51,7 @@ class PenalizedEarlyStopping(Callback):
 
             if measure_value > self.max_measure_value:
                 self.best_weights = deepcopy(self.model.state_dict())
-
-            self.max_measure_value = measure_value
+                self.max_measure_value = measure_value
 
         elif criterion_value > (self.min_criterion_value + self.min_delta):
             self.counter += 1
