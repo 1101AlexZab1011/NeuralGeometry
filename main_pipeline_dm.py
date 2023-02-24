@@ -77,8 +77,6 @@ if __name__ == '__main__':
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name = vars(parser.parse_args()).values()
-    print(from_, to)
-    raise OSError
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -100,7 +98,6 @@ if __name__ == '__main__':
     for subject_name in iterator:
         logging.debug(f'Processing subject: {subject_name}')
         subject_num = int(re.findall(r'\d+', subject_name)[0])
-        print(subject_name, subject_num, from_, subject_num < from_)
 
         if (subject_num in excluded_subjects) or\
             (from_ and subject_num < from_) or\
