@@ -98,6 +98,7 @@ if __name__ == '__main__':
     for subject_name in iterator:
         logging.debug(f'Processing subject: {subject_name}')
         subject_num = int(re.findall(r'\d+', subject_name)[0])
+        print(subject_num, from_, subject_num < from_)
 
         if (subject_num in excluded_subjects) or\
             (from_ and subject_num < from_) or\
