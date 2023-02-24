@@ -96,7 +96,6 @@ if __name__ == '__main__':
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
-    X, Y = None, None
     for subject_name in iterator:
         if not os.path.exists(iterator.dataset_path):
             logging.debug(f'Processing subject: {subject_name}')
@@ -151,6 +150,7 @@ if __name__ == '__main__':
 
         dataset = ConcatDataset(all_data)
         train, test = torch.utils.data.random_split(dataset, [.7, .3])
+        X, Y = next(iter(DataLoader(train, 2)))
 
         match model_name:
             case 'lfcnn':
