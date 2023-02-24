@@ -96,6 +96,7 @@ if __name__ == '__main__':
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
+    X, Y = None, None
     for subject_name in iterator:
         if not os.path.exists(iterator.dataset_path):
             logging.debug(f'Processing subject: {subject_name}')
