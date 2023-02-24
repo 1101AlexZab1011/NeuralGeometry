@@ -20,7 +20,7 @@ from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, C
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import torchmetrics
 from copy import deepcopy
 from utils import PenalizedEarlyStopping
@@ -95,53 +95,60 @@ if __name__ == '__main__':
     logging.info(f'Current classification: {classification_name_formatted}')
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
+    all_data = list()
     for subject_name in iterator:
-        logging.debug(f'Processing subject: {subject_name}')
-        subject_num = int(re.findall(r'\d+', subject_name)[0])
+        if not os.path.exists(iterator.dataset_path):
+            logging.debug(f'Processing subject: {subject_name}')
+            subject_num = int(re.findall(r'\d+', subject_name)[0])
 
-        if (subject_num in excluded_subjects) or\
-            (from_ and subject_num < from_) or\
-            (to and subject_num > to):
-            logging.debug(f'Skipping subject {subject_name}')
-            continue
+            if (subject_num in excluded_subjects) or\
+                (from_ and subject_num < from_) or\
+                (to and subject_num > to):
+                logging.debug(f'Skipping subject {subject_name}')
+                continue
 
-        sp_preprocessor = BasicPreprocessor(103, 200)
-        con_preprocessor = BasicPreprocessor(103, 200, 2)
-        preprcessed = list()
-        if 'sp' in kind:
-            if 'pre' in stage:
-                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
-            if 'post' in stage:
-                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
-        if 'con' in kind:
-            if 'pre' in stage:
-                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
-            if 'post' in stage:
-                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
-        if not preprcessed:
-            raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
+            sp_preprocessor = BasicPreprocessor(103, 200)
+            con_preprocessor = BasicPreprocessor(103, 200, 2)
+            preprcessed = list()
+            if 'sp' in kind:
+                if 'pre' in stage:
+                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                if 'post' in stage:
+                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+            if 'con' in kind:
+                if 'pre' in stage:
+                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                if 'post' in stage:
+                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+            if not preprcessed:
+                raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
 
-        info = preprcessed[0].epochs.pick_types(meg='grad').info
-        X = np.concatenate([
-            data.
-            epochs.
-            pick_types(meg='grad').
-            apply_baseline((bl_from, bl_to)).
-            crop(crop_from, crop_to).
-            get_data()
-            for data in preprcessed
-            ])
-        Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
+            info = preprcessed[0].epochs.pick_types(meg='grad').info
+            X = np.concatenate([
+                data.
+                epochs.
+                pick_types(meg='grad').
+                apply_baseline((bl_from, bl_to)).
+                crop(crop_from, crop_to).
+                get_data()
+                for data in preprcessed
+                ])
+            Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
 
-        if balance_classes:
-            X, Y = balance(X, Y)
+            if balance_classes:
+                X, Y = balance(X, Y)
 
-        n_classes, classes_samples = np.unique(Y, return_counts=True)
-        n_classes = len(n_classes)
-        classes_samples = classes_samples.tolist()
-        Y = one_hot_encoder(Y)
-        dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
-        dataset.save(iterator.dataset_path)
+            n_classes, classes_samples = np.unique(Y, return_counts=True)
+            n_classes = len(n_classes)
+            classes_samples = classes_samples.tolist()
+            Y = one_hot_encoder(Y)
+            dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
+            dataset.save(iterator.dataset_path)
+            all_data.append(dataset)
+        else:
+            all_data.append(EpochsDataset.load(iterator.dataset_path))
+
+        dataset = ConcatDataset(all_data)
         train, test = torch.utils.data.random_split(dataset, [.7, .3])
 
         match model_name:
