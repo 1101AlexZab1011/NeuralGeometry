@@ -16,11 +16,54 @@ from deepmeg.models.experimental import FourierSPIRIT, CanonicalSPIRIT
 from deepmeg.interpreters import LFCNNInterpreter, SPIRITInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
-from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg
+from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
+from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
+from copy import deepcopy
+
+
+class PenalizedEarlyStopping(Callback):
+    def __init__(self, patience=5, monitor='loss_train', measure='binary_accuracy_train', min_delta=0, restore_best_weights=True):
+        super().__init__()
+        self.patience = patience
+        self.monitor = monitor
+        self.measure = measure
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.counter = 0
+        self.min_criterion_value = np.inf
+        self.max_measure_value = -np.inf
+        self.best_weights = None
+
+    def set_trainer(self, trainer: Trainer):
+        super().set_trainer(trainer)
+        self.model = self.trainer.model
+
+    def on_epoch_end(self, epoch_num, metrics):
+        criterion_value = metrics[self.monitor]
+        measure_value = metrics[self.measure]
+        if criterion_value < self.min_criterion_value or measure_value > self.max_measure_value:
+            self.min_criterion_value = criterion_value
+            self.counter = 0
+
+            if measure_value > self.max_measure_value:
+                self.best_weights = deepcopy(self.model.state_dict())
+
+            self.max_measure_value = measure_value
+
+        elif criterion_value > (self.min_criterion_value + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                if self.restore_best_weights:
+                    self.restore()
+
+                self.trainer.interrupt()
+
+    def restore(self):
+        self.model.load_state_dict(self.best_weights)
 
 
 if __name__ == '__main__':
@@ -215,7 +258,8 @@ if __name__ == '__main__':
             metric,
             callbacks=[
                 PrintingCallback(),
-                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
