@@ -148,160 +148,159 @@ if __name__ == '__main__':
         else:
             all_data.append(EpochsDataset.load(iterator.dataset_path))
 
-        dataset = ConcatDataset(all_data)
-        train, test = torch.utils.data.random_split(dataset, [.7, .3])
-        X, Y = next(iter(DataLoader(train, 2)))
+    dataset = ConcatDataset(all_data)
+    train, test = torch.utils.data.random_split(dataset, [.7, .3])
+    X, Y = next(iter(DataLoader(train, 2)))
 
-        match model_name:
-            case 'lfcnn':
-                model = LFCNN(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNInterpreter
-                parametrizer = LFCNNParameters
-            case 'hilbert':
-                model = HilbertNet(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNInterpreter
-                parametrizer = LFCNNParameters
-            case 'spirit':
-                model = SPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case 'fourier':
-                model = FourierSPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case 'canonical':
-                model = CanonicalSPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case _:
-                raise ValueError(f'Invalid model name: {model_name}')
+    match model_name:
+        case 'lfcnn':
+            model = LFCNN(
+                n_channels=X.shape[1],
+                n_latent=8,
+                n_times=X.shape[-1],
+                filter_size=50,
+                pool_factor=10,
+                n_outputs=Y.shape[1]
+            )
+            interpretation = LFCNNInterpreter
+            parametrizer = LFCNNParameters
+        case 'hilbert':
+            model = HilbertNet(
+                n_channels=X.shape[1],
+                n_latent=8,
+                n_times=X.shape[-1],
+                filter_size=50,
+                pool_factor=10,
+                n_outputs=Y.shape[1]
+            )
+            interpretation = LFCNNInterpreter
+            parametrizer = LFCNNParameters
+        case 'spirit':
+            model = SPIRIT(
+                n_channels=X.shape[1],
+                n_latent=8,
+                n_times=X.shape[-1],
+                window_size=20,
+                latent_dim=10,
+                filter_size=50,
+                pool_factor=10,
+                n_outputs=Y.shape[1]
+            )
+            interpretation = SPIRITInterpreter
+            parametrizer = SPIRITParameters
+        case 'fourier':
+            model = FourierSPIRIT(
+                n_channels=X.shape[1],
+                n_latent=8,
+                n_times=X.shape[-1],
+                window_size=20,
+                latent_dim=10,
+                filter_size=50,
+                pool_factor=10,
+                n_outputs=Y.shape[1]
+            )
+            interpretation = SPIRITInterpreter
+            parametrizer = SPIRITParameters
+        case 'canonical':
+            model = CanonicalSPIRIT(
+                n_channels=X.shape[1],
+                n_latent=8,
+                n_times=X.shape[-1],
+                window_size=20,
+                latent_dim=10,
+                filter_size=50,
+                pool_factor=10,
+                n_outputs=Y.shape[1]
+            )
+            interpretation = SPIRITInterpreter
+            parametrizer = SPIRITParameters
+        case _:
+            raise ValueError(f'Invalid model name: {model_name}')
 
-        optimizer = torch.optim.Adam
-        loss = torch.nn.BCEWithLogitsLoss()
-        metric = torchmetrics.functional.classification.binary_accuracy
-        model.compile(
-            optimizer,
-            loss,
-            metric,
-            callbacks=[
-                PrintingCallback(),
-                # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-                PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
-                L2Reg(
-                    [
-                        'unmixing_layer.weight', 'temp_conv.weight',
-                    ], lambdas=.01
-                )
-            ],
-            # FIXME: check why it does not work with cuda
-            device='cpu'
-        )
+    optimizer = torch.optim.Adam
+    loss = torch.nn.BCEWithLogitsLoss()
+    metric = torchmetrics.functional.classification.binary_accuracy
+    model.compile(
+        optimizer,
+        loss,
+        metric,
+        callbacks=[
+            PrintingCallback(),
+            # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+            PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
+            L2Reg(
+                [
+                    'unmixing_layer.weight', 'temp_conv.weight',
+                ], lambdas=.01
+            )
+        ],
+        # FIXME: check why it does not work with cuda
+        device='cpu'
+    )
 
-        t1 = perf_counter()
-        history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
-        runtime = perf_counter() - t1
+    t1 = perf_counter()
+    history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
+    runtime = perf_counter() - t1
 
-        x_train, y_true_train = next(iter(DataLoader(train, len(train))))
-        y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
-        x_test, y_true_test = next(iter(DataLoader(test, len(test))))
-        y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
+    x_train, y_true_train = next(iter(DataLoader(train, len(train))))
+    y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
+    x_test, y_true_test = next(iter(DataLoader(test, len(test))))
+    y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
 
-        save(
-            Predictions(
-                y_pred_test,
-                y_true_test
-            ),
-            iterator.predictions_path
-        )
+    save(
+        Predictions(
+            y_pred_test,
+            y_true_test
+        ),
+        iterator.predictions_path
+    )
 
-        train_result = model.evaluate(train)
-        result = model.evaluate(test)
+    train_result = model.evaluate(train)
+    result = model.evaluate(test)
 
-        train_loss_, train_acc_ = train_result.values()
-        test_loss_, test_acc_ = result.values()
-        logging.info(f'{subject_name}\nClassification results:\n \tRUNTIME: {runtime}\n\tTRAIN_ACC: {train_acc_}\n\tTEST_ACC: {test_acc_}')
+    train_loss_, train_acc_ = train_result.values()
+    test_loss_, test_acc_ = result.values()
+    logging.info(f'{subject_name}\nClassification results:\n \tRUNTIME: {runtime}\n\tTRAIN_ACC: {train_acc_}\n\tTEST_ACC: {test_acc_}')
 
-        if not no_params:
-            logging.debug('Computing parameters')
-            params = parametrizer(interpretation(model, test, info))
-            params.save(iterator.parameters_path)
+    if not no_params:
+        logging.debug('Computing parameters')
+        params = parametrizer(interpretation(model, test, info))
+        params.save(iterator.parameters_path)
 
-        perf_table_path = os.path.join(
-            iterator.history_path,
-            f'{classification_name_formatted}.csv'
-        )
-        processed_df = pd.Series(
-            [
-                n_classes,
-                *classes_samples,
-                sum(classes_samples),
-                len(test),
-                train_acc_,
-                train_loss_,
-                test_acc_,
-                test_loss_,
-                runtime
-            ],
-            index=[
-                'n_classes',
-                *[str(i) for i in range(len(classes_samples))],
-                'total',
-                'test_set',
-                'train_acc',
-                'train_loss',
-                'test_acc',
-                'test_loss',
-                'runtime'
-            ],
-            name=subject_name
-        ).to_frame().T
+    perf_table_path = os.path.join(
+        iterator.history_path,
+        f'{classification_name_formatted}.csv'
+    )
+    processed_df = pd.Series(
+        [
+            n_classes,
+            *classes_samples,
+            sum(classes_samples),
+            len(test),
+            train_acc_,
+            train_loss_,
+            test_acc_,
+            test_loss_,
+            runtime
+        ],
+        index=[
+            'n_classes',
+            *[str(i) for i in range(len(classes_samples))],
+            'total',
+            'test_set',
+            'train_acc',
+            'train_loss',
+            'test_acc',
+            'test_loss',
+            'runtime'
+        ],
+        name=f'group{from_}-{to}'
+    ).to_frame().T
 
-        if os.path.exists(perf_table_path):
-            pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
-                .to_csv(perf_table_path)
-        else:
-            processed_df.to_csv(perf_table_path)
+    if os.path.exists(perf_table_path):
+        pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
+            .to_csv(perf_table_path)
+    else:
+        processed_df.to_csv(perf_table_path)
 
-        logging.info(f'Processing of subject {subject_name} is done')
-    logging.info('All subjects are processed')
+logging.info('All subjects are processed')
