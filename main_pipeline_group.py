@@ -235,8 +235,6 @@ if __name__ == '__main__':
                 ], lambdas=.01
             )
         ],
-        # FIXME: check why it does not work with cuda
-        device='cpu'
     )
 
     t1 = perf_counter()
