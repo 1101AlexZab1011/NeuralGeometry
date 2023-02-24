@@ -96,8 +96,9 @@ if __name__ == '__main__':
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
+    info = None
     for subject_name in iterator:
-        if not os.path.exists(iterator.dataset_path):
+        if not os.path.exists(iterator.dataset_path) or info is None:
             logging.debug(f'Processing subject: {subject_name}')
             subject_num = int(re.findall(r'\d+', subject_name)[0])
 
@@ -294,7 +295,7 @@ if __name__ == '__main__':
             'test_loss',
             'runtime'
         ],
-        name=f'group{from_}-{to}'
+        name=f'group_{from_}-{to}'
     ).to_frame().T
 
     if os.path.exists(perf_table_path):
