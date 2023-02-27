@@ -59,6 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
     parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
+    parser.add_argument('-d', '--device', type=str, help='Device to use', default='cuda')
 
 
     excluded_subjects, \
@@ -76,7 +77,8 @@ if __name__ == '__main__':
         stage,\
         crop_from, crop_to,\
         bl_from, bl_to,\
-        model_name = vars(parser.parse_args()).values()
+        model_name,\
+        device = vars(parser.parse_args()).values()
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -97,6 +99,8 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
     info = None
+    n_classes = None
+    all_classes_samples = None
     for subject_name in iterator:
         if not os.path.exists(iterator.dataset_path) or info is None:
             logging.debug(f'Processing subject: {subject_name}')
@@ -139,16 +143,25 @@ if __name__ == '__main__':
             if balance_classes:
                 X, Y = balance(X, Y)
 
-            n_classes, classes_samples = np.unique(Y, return_counts=True)
-            n_classes = len(n_classes)
-            classes_samples = classes_samples.tolist()
             Y = one_hot_encoder(Y)
+
+            if n_classes is None and all_classes_samples is None:
+                n_classes, classes_samples = np.unique(Y, return_counts=True)
+                n_classes = len(n_classes)
+                classes_samples = classes_samples.tolist()
+                all_classes_samples = classes_samples
+            elif n_classes is not None and all_classes_samples is not None:
+                _, classes_samples = np.unique(Y, return_counts=True)
+                classes_samples = classes_samples.tolist()
+                all_classes_samples = [x + y for x, y in zip(all_classes_samples, classes_samples)]
+
             dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
             dataset.save(iterator.dataset_path)
             all_data.append(dataset)
         else:
             all_data.append(EpochsDataset.load(iterator.dataset_path))
 
+    iterator.select_subject('group')
     dataset = ConcatDataset(all_data)
     train, test = torch.utils.data.random_split(dataset, [.7, .3])
     X, Y = next(iter(DataLoader(train, 2)))
@@ -235,7 +248,7 @@ if __name__ == '__main__':
                 ], lambdas=.01
             )
         ],
-        device='cpu'
+        device=device
     )
 
     t1 = perf_counter()

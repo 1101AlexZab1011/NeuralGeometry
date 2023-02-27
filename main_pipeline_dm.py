@@ -59,6 +59,7 @@ if __name__ == '__main__':
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
     parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
+    parser.add_argument('-d', '--device', type=str, help='Device to use', default='cuda')
 
 
     excluded_subjects, \
@@ -76,7 +77,8 @@ if __name__ == '__main__':
         stage,\
         crop_from, crop_to,\
         bl_from, bl_to,\
-        model_name = vars(parser.parse_args()).values()
+        model_name,\
+        device = vars(parser.parse_args()).values()
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -226,7 +228,7 @@ if __name__ == '__main__':
                     ], lambdas=.01
                 )
             ],
-            device='cpu'
+            device=device
         )
 
         t1 = perf_counter()
