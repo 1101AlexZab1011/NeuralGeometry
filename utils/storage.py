@@ -69,10 +69,14 @@ class BasicStorageIterator:
     def select_subject(self, subject_name: str):
         logging.info(f'Select subject {subject_name}')
         self.subject_path = os.path.join(self.subjects_dir, subject_name)
-        self.data_paths = [
-            BasicDataDirectory(path)
-            for file_name in os.listdir(self.subject_path) if os.path.isdir(path := os.path.join(self.subject_path, file_name))
-        ]
+        if os.path.exists(self.subject_path):
+            self.data_paths = [
+                BasicDataDirectory(path)
+                for file_name in os.listdir(self.subject_path) if os.path.isdir(path := os.path.join(self.subject_path, file_name))
+            ]
+        else:
+            self.subject_path = None
+            self.data_paths = list()
 
     def get_data(self, stage: STAGE) -> BasicDataDirectory:
         if not self.data_paths:
