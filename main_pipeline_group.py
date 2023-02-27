@@ -90,7 +90,7 @@ if __name__ == '__main__':
     )))
     logging.basicConfig(
         format='%(asctime)s %(levelname)s:\t%(message)s',
-        filename=f'./logs/{classification_name}.log',
+        filename=f'./logs/{classification_name_formatted}.log',
         encoding='utf-8',
         level=logging.DEBUG
     )
