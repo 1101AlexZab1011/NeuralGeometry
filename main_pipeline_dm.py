@@ -226,6 +226,7 @@ if __name__ == '__main__':
                     ], lambdas=.01
                 )
             ],
+            device='cpu'
         )
 
         t1 = perf_counter()
