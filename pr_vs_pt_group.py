@@ -53,7 +53,6 @@ if __name__ == '__main__':
     parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
-    parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
@@ -74,7 +73,6 @@ if __name__ == '__main__':
         balance_classes, \
         target_col_name,\
         kind,\
-        stage,\
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name,\
@@ -115,18 +113,19 @@ if __name__ == '__main__':
             sp_preprocessor = BasicPreprocessor(103, 200)
             con_preprocessor = BasicPreprocessor(103, 200, 2)
             preprcessed = list()
+            targets = list()
             if 'sp' in kind:
-                if 'pre' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
-                if 'post' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                targets.append(np.zeros((len(preprcessed[-1].clusters),)))
+                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                targets.append(np.ones((len(preprcessed[-1].clusters),)))
             if 'con' in kind:
-                if 'pre' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
-                if 'post' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                targets.append(np.zeros((len(preprcessed[-1].clusters),)))
+                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                targets.append(np.ones((len(preprcessed[-1].clusters),)))
             if not preprcessed:
-                raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
+                raise ValueError(f'No data selected. Your config is: {kind = }')
 
             info = preprcessed[0].epochs.pick_types(meg='grad').info
             X = np.concatenate([
@@ -138,7 +137,7 @@ if __name__ == '__main__':
                 get_data()
                 for data in preprcessed
                 ])
-            Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
+            Y = np.concatenate(targets)
 
             if balance_classes:
                 X, Y = balance(X, Y)
