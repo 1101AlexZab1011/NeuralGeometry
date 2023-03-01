@@ -139,7 +139,7 @@ if __name__ == '__main__':
 
             if balance_classes:
                 X, Y = balance(X, Y)
-            print(Y)
+
             Y = one_hot_encoder(Y)
 
             if n_classes is None and all_classes_samples is None:
