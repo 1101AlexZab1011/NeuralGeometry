@@ -51,7 +51,6 @@ if __name__ == '__main__':
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
-    parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
@@ -71,7 +70,6 @@ if __name__ == '__main__':
         project_name, \
         no_params, \
         balance_classes, \
-        target_col_name,\
         kind,\
         crop_from, crop_to,\
         bl_from, bl_to,\
@@ -141,7 +139,7 @@ if __name__ == '__main__':
 
             if balance_classes:
                 X, Y = balance(X, Y)
-
+            print(Y)
             Y = one_hot_encoder(Y)
 
             if n_classes is None and all_classes_samples is None:
