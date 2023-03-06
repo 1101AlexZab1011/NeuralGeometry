@@ -11,18 +11,18 @@ from time import perf_counter
 import re
 import logging
 from utils import balance
-from deepmeg.models.interpretable import LFCNN, SPIRIT, HilbertNet
-from deepmeg.models.experimental import FourierSPIRIT, CanonicalSPIRIT
-from deepmeg.interpreters import LFCNNInterpreter, SPIRITInterpreter
+from deepmeg.models.interpretable import LFCNN, HilbertNet
+from deepmeg.experimental.models import SPIRIT, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
+from deepmeg.interpreters import LFCNNInterpreter
+from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
 import torch
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader
 import torchmetrics
-from copy import deepcopy
 from utils import PenalizedEarlyStopping
 
 
@@ -176,6 +176,17 @@ if __name__ == '__main__':
             )
             interpretation = LFCNNInterpreter
             parametrizer = LFCNNParameters
+        case 'lfcnnw':
+                model = LFCNNW(
+                    n_channels=X.shape[1],
+                    n_latent=8,
+                    n_times=X.shape[-1],
+                    filter_size=50,
+                    pool_factor=10,
+                    n_outputs=Y.shape[1]
+                )
+                interpretation = LFCNNWInterpreter
+                parametrizer = LFCNNParameters
         case 'hilbert':
             model = HilbertNet(
                 n_channels=X.shape[1],
