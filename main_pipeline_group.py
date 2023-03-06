@@ -11,8 +11,8 @@ from time import perf_counter
 import re
 import logging
 from utils import balance
-from deepmeg.models.interpretable import LFCNN
-from deepmeg.experimental.models import SPIRIT, HilbertNet, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
+from deepmeg.models.interpretable import LFCNN, HilbertNet
+from deepmeg.experimental.models import SPIRIT, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
 from deepmeg.interpreters import LFCNNInterpreter
 from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpreter
 from deepmeg.data.datasets import EpochsDataset
