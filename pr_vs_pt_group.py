@@ -19,7 +19,8 @@ from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
 from deepmeg.training.trainers import Trainer
-from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
+from deepmeg.utils.params import Predictions, save, LFCNNParameters
+from deepmeg.experimental.params import SPIRITParameters
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
