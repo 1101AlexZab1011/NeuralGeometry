@@ -21,7 +21,7 @@ from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, C
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import torchmetrics
 from utils import PenalizedEarlyStopping
 
