@@ -71,9 +71,7 @@ if __name__ == '__main__':
         project_name, \
         no_params, \
         balance_classes, \
-        target_col_name,\
         kind,\
-        stage,\
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name,\
