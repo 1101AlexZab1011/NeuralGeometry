@@ -189,7 +189,7 @@ if __name__ == '__main__':
                     n_outputs=Y.shape[1]
                 )
                 interpretation = LFCNNWInterpreter
-                parametrizer = LFCNNParameters
+                parametrizer = SPIRITParameters
         case 'hilbert':
             model = HilbertNet(
                 n_channels=X.shape[1],
