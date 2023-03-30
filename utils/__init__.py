@@ -2,6 +2,7 @@ import numpy as np
 from deepmeg.training.callbacks import Callback
 from deepmeg.training.trainers import Trainer
 from copy import deepcopy
+import torch
 
 def balance(X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     classes, classes_samples = np.unique(Y, return_counts=True)
@@ -58,3 +59,30 @@ class PenalizedEarlyStopping(Callback):
 
     def restore(self):
         self.model.load_state_dict(self.best_weights)
+
+
+class WeightClipper(object):
+    def __init__(self, model):
+        self.model = model
+
+    def __call__(self, module):
+        self.model.temp_conv.weight -= self.model.temp_conv.weight.mean(-1, keepdim=True)
+
+
+class TempConvAveClipping(Callback):
+    def __init__(self):
+        super().__init__()
+
+    def set_trainer(self, trainer: Trainer):
+        super().set_trainer(trainer)
+        self.model = self.trainer.model
+        self.clipper = WeightClipper(self.model)
+
+    @torch.no_grad()
+    def on_batch_end(
+        self,
+        Y: torch.Tensor,
+        Y_pred: torch.Tensor,
+        metrics: dict
+    ):
+        self.model.apply(self.clipper)

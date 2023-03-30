@@ -115,7 +115,6 @@ class DLStorageIterator(BasicStorageIterator):
         check_path(self.results_path)
         self.name = name
         self.subject_results_path = None
-        self.network_out_path = None
         self.parameters_path = None
         self.predictions_path = None
 
