@@ -50,7 +50,7 @@ if __name__ == '__main__':
 
     iterator = DLStorageIterator(subjects_dir, classification_name_formatted)
     iterator.select_subject(subject_name)
-    params = LFCNNParameters.read(iterator.parameters_path)
+    params = LFCNNParameters.load(iterator.parameters_path)
 
     if sort_ == 'branch_loss':
         order = params.order

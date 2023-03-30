@@ -326,9 +326,9 @@ if __name__ == '__main__':
             index=[
                 'train_set',
                 'test_set',
-                'train_acc',
+                'train_mae',
                 'train_loss',
-                'test_acc',
+                'test_mae',
                 'test_loss',
                 'runtime'
             ],
