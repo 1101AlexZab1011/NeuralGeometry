@@ -63,7 +63,6 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
-    parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
@@ -82,7 +81,6 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
-        target_col_name,\
         kind,\
         crop_from, crop_to,\
         bl_from, bl_to,\
@@ -279,7 +277,7 @@ if __name__ == '__main__':
             figs,
             set(map(lambda name: name.split('_')[0], history.keys()))
         ):
-            fig.savefig(os.path.join(img_path, f'{name}.png', dpi=300))
+            fig.savefig(os.path.join(img_path, f'{name}.png'), dpi=300)
 
         x_train, y_true_train = next(iter(DataLoader(train, len(train))))
         y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
@@ -309,7 +307,7 @@ if __name__ == '__main__':
 
             for i in range(n_latent):
                 fig = interpreter.plot_branch(i)
-                fig.savefig(os.path.join(img_path, f'Branch_{i}.png', dpi=300))
+                fig.savefig(os.path.join(img_path, f'Branch_{i}.png'), dpi=300)
 
         perf_table_path = os.path.join(
             iterator.history_path,
@@ -326,7 +324,7 @@ if __name__ == '__main__':
                 runtime
             ],
             index=[
-                'train_set'
+                'train_set',
                 'test_set',
                 'train_acc',
                 'train_loss',
