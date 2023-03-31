@@ -18,12 +18,22 @@ from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpret
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
+from utils import TempConvAveClipping
 from deepmeg.training.trainers import Trainer
-from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
+from deepmeg.utils.params import Predictions, save, LFCNNParameters
+from deepmeg.experimental.params import SPIRITParameters
 import torch
-from torch.utils.data import DataLoader, ConcatDataset
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
 import torchmetrics
 from utils import PenalizedEarlyStopping
+from deepmeg.utils.convtools import conviter
+from deepmeg.utils import check_path
+from deepmeg.utils.viz import plot_metrics
+from torch.utils.data import DataLoader, ConcatDataset
+from training_pipeline import moving_average
+from deepmeg.utils import check_path
+from deepmeg.utils.viz import plot_metrics
 
 
 if __name__ == '__main__':
@@ -50,10 +60,7 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
-    parser.add_argument('--balance', action='store_true', help='Balance classes')
-    parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spcon"', default='spcon')
-    parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
@@ -71,15 +78,14 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
-        balance_classes, \
-        target_col_name,\
         kind,\
-        stage,\
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name,\
         device = vars(parser.parse_args()).values()
 
+    win = 20
+    n_latent = 8
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
         [
@@ -99,8 +105,6 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
     info = None
-    n_classes = None
-    all_classes_samples = None
     for subject_name in iterator:
         if not os.path.exists(iterator.dataset_path) or info is None:
             logging.debug(f'Processing subject: {subject_name}')
@@ -116,19 +120,13 @@ if __name__ == '__main__':
             con_preprocessor = BasicPreprocessor(103, 200, 2)
             preprcessed = list()
             if 'sp' in kind:
-                if 'pre' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
-                if 'post' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
             if 'con' in kind:
-                if 'pre' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
-                if 'post' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
             if not preprcessed:
-                raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
+                raise ValueError(f'No data selected. Your config is: {kind = }')
 
-            info = preprcessed[0].epochs.pick_types(meg='grad').info
+            info = preprcessed[0].epochs.pick_types(meg='grad').info if info is None else info
             X = np.concatenate([
                 data.
                 epochs.
@@ -138,30 +136,34 @@ if __name__ == '__main__':
                 get_data()
                 for data in preprcessed
                 ])
-            Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
-
-            if balance_classes:
-                X, Y = balance(X, Y)
-
-            Y = one_hot_encoder(Y)
-
-            if n_classes is None and all_classes_samples is None:
-                n_classes, classes_samples = np.unique(Y, return_counts=True)
-                n_classes = len(n_classes)
-                classes_samples = classes_samples.tolist()
-                all_classes_samples = classes_samples
-            elif n_classes is not None and all_classes_samples is not None:
-                _, classes_samples = np.unique(Y, return_counts=True)
-                classes_samples = classes_samples.tolist()
-                all_classes_samples = [x + y for x, y in zip(all_classes_samples, classes_samples)]
-
+            feedbacks = [data.session_info.Feedback.to_numpy() for data in preprcessed]
+            feedbacks_np = moving_average(np.concatenate(feedbacks), win)
+            min_, max_ = feedbacks_np.min(), feedbacks_np.max()
+            del feedbacks_np
+            minmax = lambda x, min_, max_: (x - min_)/(max_ - min_)
+            acc = [
+                np.expand_dims(
+                    minmax(
+                        moving_average(
+                            data.session_info.Feedback, win
+                        ),
+                        min_, max_
+                    ),
+                    1
+                )
+                for data in preprcessed
+            ]
+            Y = np.concatenate(acc)
             dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
             dataset.save(iterator.dataset_path)
             all_data.append(dataset)
         else:
+            logging.debug(f'Reading dataset of subject: {subject_name}')
             all_data.append(EpochsDataset.load(iterator.dataset_path))
 
     iterator.select_subject('group')
+    img_path = os.path.join(iterator.subject_results_path, 'Pictures')
+    check_path(img_path)
     dataset = ConcatDataset(all_data)
     logging.info(f'{len(dataset)} samples in total')
     train, test = torch.utils.data.random_split(dataset, [.7, .3])
@@ -171,7 +173,7 @@ if __name__ == '__main__':
         case 'lfcnn':
             model = LFCNN(
                 n_channels=X.shape[1],
-                n_latent=8,
+                n_latent=n_latent,
                 n_times=X.shape[-1],
                 filter_size=50,
                 pool_factor=10,
@@ -182,7 +184,7 @@ if __name__ == '__main__':
         case 'lfcnnw':
                 model = LFCNNW(
                     n_channels=X.shape[1],
-                    n_latent=8,
+                    n_latent=n_latent,
                     n_times=X.shape[-1],
                     filter_size=50,
                     pool_factor=10,
@@ -193,7 +195,7 @@ if __name__ == '__main__':
         case 'hilbert':
             model = HilbertNet(
                 n_channels=X.shape[1],
-                n_latent=8,
+                n_latent=n_latent,
                 n_times=X.shape[-1],
                 filter_size=50,
                 pool_factor=10,
@@ -204,7 +206,7 @@ if __name__ == '__main__':
         case 'spirit':
             model = SPIRIT(
                 n_channels=X.shape[1],
-                n_latent=8,
+                n_latent=n_latent,
                 n_times=X.shape[-1],
                 window_size=20,
                 latent_dim=10,
@@ -217,7 +219,7 @@ if __name__ == '__main__':
         case 'fourier':
             model = FourierSPIRIT(
                 n_channels=X.shape[1],
-                n_latent=8,
+                n_latent=n_latent,
                 n_times=X.shape[-1],
                 window_size=20,
                 latent_dim=10,
@@ -230,7 +232,7 @@ if __name__ == '__main__':
         case 'canonical':
             model = CanonicalSPIRIT(
                 n_channels=X.shape[1],
-                n_latent=8,
+                n_latent=n_latent,
                 n_times=X.shape[-1],
                 window_size=20,
                 latent_dim=10,
@@ -243,17 +245,17 @@ if __name__ == '__main__':
         case _:
             raise ValueError(f'Invalid model name: {model_name}')
 
-    optimizer = torch.optim.Adam
-    loss = torch.nn.BCEWithLogitsLoss()
-    metric = torchmetrics.functional.classification.binary_accuracy
+    optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
+    loss = torch.nn.MSELoss()
+    metric = ('mae', torch.nn.L1Loss())
     model.compile(
         optimizer,
         loss,
         metric,
         callbacks=[
             PrintingCallback(),
-            # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-            PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
+            TempConvAveClipping(),
+            EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
             L2Reg(
                 [
                     'unmixing_layer.weight', 'temp_conv.weight',
@@ -266,6 +268,12 @@ if __name__ == '__main__':
     t1 = perf_counter()
     history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
     runtime = perf_counter() - t1
+    figs = plot_metrics(history)
+    for fig, name in zip(
+        figs,
+        set(map(lambda name: name.split('_')[0], history.keys()))
+    ):
+        fig.savefig(os.path.join(img_path, f'{name}.png'), dpi=300)
 
     x_train, y_true_train = next(iter(DataLoader(train, len(train))))
     y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
@@ -289,8 +297,13 @@ if __name__ == '__main__':
 
     if not no_params:
         logging.debug('Computing parameters')
-        params = parametrizer(interpretation(model, test, info))
+        interpreter = interpretation(model, test, info)
+        params = parametrizer(interpreter)
         params.save(iterator.parameters_path)
+
+        for i in range(n_latent):
+            fig = interpreter.plot_branch(i)
+            fig.savefig(os.path.join(img_path, f'Branch_{i}.png'), dpi=300)
 
     perf_table_path = os.path.join(
         iterator.history_path,
@@ -298,9 +311,7 @@ if __name__ == '__main__':
     )
     processed_df = pd.Series(
         [
-            n_classes,
-            *classes_samples,
-            sum(classes_samples),
+            len(train),
             len(test),
             train_acc_,
             train_loss_,
@@ -309,17 +320,15 @@ if __name__ == '__main__':
             runtime
         ],
         index=[
-            'n_classes',
-            *[str(i) for i in range(len(classes_samples))],
-            'total',
+            'train_set',
             'test_set',
-            'train_acc',
+            'train_mae',
             'train_loss',
-            'test_acc',
+            'test_mae',
             'test_loss',
             'runtime'
         ],
-        name=f'group_{from_}-{to}'
+        name=subject_name
     ).to_frame().T
 
     if os.path.exists(perf_table_path):

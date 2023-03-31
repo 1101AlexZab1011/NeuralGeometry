@@ -163,6 +163,7 @@ if __name__ == '__main__':
 
         for curve in acc:
             ax.plot(curve)
+
         ax.set_title(subject_name)
         ax.legend(kinds, loc='upper right')
         fig.savefig(os.path.join(img_path, 'subject_acc.png'), dpi=300)
@@ -176,7 +177,7 @@ if __name__ == '__main__':
             case 'lfcnn':
                 model = LFCNN(
                     n_channels=X.shape[1],
-                    n_latent=8,
+                    n_latent=n_latent,
                     n_times=X.shape[-1],
                     filter_size=50,
                     pool_factor=10,
