@@ -129,9 +129,12 @@ class DLStorageIterator(BasicStorageIterator):
             os.path.abspath(os.path.join(self.subjects_dir, os.pardir)),
             'History'
         )
+        self.pics_path = os.path.join(self.subject_results_path, 'Pictures')
+
         check_path(
             os.path.abspath(os.path.join(self.subject_results_path, os.pardir)),
             self.subject_results_path,
             self.dataset_content_path,
-            self.history_path
+            self.history_path,
+            self.pics_path
         )

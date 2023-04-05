@@ -7,7 +7,7 @@ from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor, Preprocessed
 import numpy as np
 import mneflow as mf
-from utils.models import SimpleNet
+from utils.models_deprecated import SimpleNet
 import tensorflow as tf
 import pandas as pd
 from time import perf_counter

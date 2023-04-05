@@ -24,16 +24,17 @@ from deepmeg.utils.params import Predictions, save, LFCNNParameters
 from deepmeg.experimental.params import SPIRITParameters
 import torch
 import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, ConcatDataset
 import torchmetrics
 from utils import PenalizedEarlyStopping
 from deepmeg.utils.convtools import conviter
 from deepmeg.utils import check_path
 from deepmeg.utils.viz import plot_metrics
-from torch.utils.data import DataLoader, ConcatDataset
 from training_pipeline import moving_average
 from deepmeg.utils import check_path
 from deepmeg.utils.viz import plot_metrics
+from utils.data import get_combined_dataset
+from utils.models import get_model_by_name
 
 
 if __name__ == '__main__':
@@ -44,6 +45,8 @@ if __name__ == '__main__':
     )
     parser.add_argument('-es', '--exclude-subjects', type=int, nargs='+',
                         default=[], help='IDs of subjects to exclude')
+    parser.add_argument('-gs', '--generalize-subjects', type=int, nargs='+',
+                        default=[], help='IDs of subjects to generalize but do not include to training sets')
     parser.add_argument('-from', type=int,
                         default=None, help='ID of a subject to start from')
     parser.add_argument('-to', type=int,
@@ -70,6 +73,7 @@ if __name__ == '__main__':
 
 
     excluded_subjects, \
+        generalized_subjects,\
         from_, \
         to, \
         subjects_dir, \
@@ -103,10 +107,10 @@ if __name__ == '__main__':
     logging.info(f'Current classification: {classification_name_formatted}')
 
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
-    all_train_data, all_test_data = list(), list()
     info = None
+    training_subjects, testing_subjects = list(), list()
     for subject_name in iterator:
-        if not os.path.exists(iterator.dataset_path[:-3] + '_train.pt') or info is None:
+        if not os.path.exists(iterator.dataset_path) or info is None:
             logging.debug(f'Processing subject: {subject_name}')
             subject_num = int(re.findall(r'\d+', subject_name)[0])
 
@@ -118,38 +122,25 @@ if __name__ == '__main__':
 
             sp_preprocessor = BasicPreprocessor(103, 200)
             con_preprocessor = BasicPreprocessor(103, 200, 2)
-            preprcessed_training, preprcessed_testing = list(), list()
-            if 'sp' in kind and 'con' in kind:
-                raise ValueError('Training data can not be both conteptual and spatial')
+            preprcessed = list()
             if 'sp' in kind:
-                preprcessed_training.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
-                preprcessed_testing.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
+                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
             if 'con' in kind:
-                preprcessed_training.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
-                preprcessed_testing.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
-            if not preprcessed_training:
+                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
+            if not preprcessed:
                 raise ValueError(f'No data selected. Your config is: {kind = }')
 
-            info = preprcessed_training[0].epochs.pick_types(meg='grad').info if info is None else info
-            X_train = np.concatenate([
+            info = preprcessed[0].epochs.pick_types(meg='grad').info if info is None else info
+            X = np.concatenate([
                 data.
                 epochs.
                 pick_types(meg='grad').
                 apply_baseline((bl_from, bl_to)).
                 crop(crop_from, crop_to).
                 get_data()
-                for data in preprcessed_training
+                for data in preprcessed
             ])
-            X_test = np.concatenate([
-                data.
-                epochs.
-                pick_types(meg='grad').
-                apply_baseline((bl_from, bl_to)).
-                crop(crop_from, crop_to).
-                get_data()
-                for data in preprcessed_testing
-            ])
-            feedbacks = [data.session_info.Feedback.to_numpy() for data in preprcessed_training]
+            feedbacks = [data.session_info.Feedback.to_numpy() for data in preprcessed]
             feedbacks_np = moving_average(np.concatenate(feedbacks), win)
             min_, max_ = feedbacks_np.min(), feedbacks_np.max()
             minmax = lambda x, min_, max_: (x - min_)/(max_ - min_)
@@ -163,124 +154,43 @@ if __name__ == '__main__':
                     ),
                     1
                 )
-                for data in preprcessed_training
+                for data in preprcessed
             ]
-            Y_train = np.concatenate(acc)
+            Y = np.concatenate(acc)
+            if subject_num in generalized_subjects:
+                # indices = np.arange(len(Y))
+                # np.random.shuffle(indices)
+                # n_test_samples = int(0.3*len(Y))
+                # indices = indices[:n_test_samples]
+                # X, Y = X[indices], Y[indices]
+                testing_subjects.append(subject_name)
+            else:
+                training_subjects.append(subject_name)
 
-            feedbacks = [data.session_info.Feedback.to_numpy() for data in preprcessed_testing]
-            feedbacks_np = moving_average(np.concatenate(feedbacks), win)
-            min_, max_ = feedbacks_np.min(), feedbacks_np.max()
-            del feedbacks_np
-            acc = [
-                np.expand_dims(
-                    minmax(
-                        moving_average(
-                            data.session_info.Feedback, win
-                        ),
-                        min_, max_
-                    ),
-                    1
-                )
-                for data in preprcessed_testing
-            ]
-            Y_test = np.concatenate(acc)
-
-            dataset_train = EpochsDataset((X_train, Y_train), transform=zscore, savepath=iterator.dataset_content_path + '_train')
-            dataset_train.save(iterator.dataset_path[:-3] + '_train.pt')
-            dataset_test = EpochsDataset((X_test, Y_test), transform=zscore, savepath=iterator.dataset_content_path + '_test')
-            dataset_test.save(iterator.dataset_path[:-3] + '_test.pt')
-            all_train_data.append(dataset_train)
-            all_test_data.append(dataset_test)
+            dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
+            dataset.save(iterator.dataset_content_path)
+            logging.debug(f'Dataset for subject {subject_name} has been made ({len(dataset)} samples, learn: {generalized_subjects})')
         else:
-            logging.debug(f'Reading dataset of subject: {subject_name}')
-            all_train_data.append(EpochsDataset.load(iterator.dataset_path[:-3] + '_train.pt'))
-            all_test_data.append(EpochsDataset.load(iterator.dataset_path[:-3] + '_test.pt'))
+            logging.debug(f'Dataset for subject {subject_name} is already exists')
+            if subject_num in generalized_subjects:
+                testing_subjects.append(subject_name)
+            else:
+                training_subjects.append(subject_name)
 
-    iterator.select_subject('group')
-    img_path = os.path.join(iterator.subject_results_path, 'Pictures')
-    check_path(img_path)
-    train_dataset = ConcatDataset(all_train_data)
-    test_dataset = ConcatDataset(all_test_data)
-    logging.info(f'{len(train_dataset)} samples in generalized dataset and {len(test_dataset)} samples in total to generalize')
-    train, test = torch.utils.data.random_split(train_dataset, [.7, .3])
-    _, gtest = torch.utils.data.random_split(test_dataset, [.7, .3])
-    X, Y = next(iter(DataLoader(train, 2)))
+    for selected_subject in training_subjects:
+        logging.debug(f'Selected subject: {selected_subject}')
+        current_testing = [selected_subject] + testing_subjects
+        dataset = get_combined_dataset(iterator, *(set(training_subjects) - {selected_subject}))
+        train, test = torch.utils.data.random_split(dataset, [.7, .3])
+        X, Y = next(iter(DataLoader(train, 2)))
 
-    match model_name:
-        case 'lfcnn':
-            model = LFCNN(
-                n_channels=X.shape[1],
-                n_latent=n_latent,
-                n_times=X.shape[-1],
-                filter_size=50,
-                pool_factor=10,
-                n_outputs=Y.shape[1]
-            )
-            interpretation = LFCNNInterpreter
-            parametrizer = LFCNNParameters
-        case 'lfcnnw':
-                model = LFCNNW(
-                    n_channels=X.shape[1],
-                    n_latent=n_latent,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNWInterpreter
-                parametrizer = SPIRITParameters
-        case 'hilbert':
-            model = HilbertNet(
-                n_channels=X.shape[1],
-                n_latent=n_latent,
-                n_times=X.shape[-1],
-                filter_size=50,
-                pool_factor=10,
-                n_outputs=Y.shape[1]
-            )
-            interpretation = LFCNNInterpreter
-            parametrizer = LFCNNParameters
-        case 'spirit':
-            model = SPIRIT(
-                n_channels=X.shape[1],
-                n_latent=n_latent,
-                n_times=X.shape[-1],
-                window_size=20,
-                latent_dim=10,
-                filter_size=50,
-                pool_factor=10,
-                n_outputs=Y.shape[1]
-            )
-            interpretation = SPIRITInterpreter
-            parametrizer = SPIRITParameters
-        case 'fourier':
-            model = FourierSPIRIT(
-                n_channels=X.shape[1],
-                n_latent=n_latent,
-                n_times=X.shape[-1],
-                window_size=20,
-                latent_dim=10,
-                filter_size=50,
-                pool_factor=10,
-                n_outputs=Y.shape[1]
-            )
-            interpretation = SPIRITInterpreter
-            parametrizer = SPIRITParameters
-        case 'canonical':
-            model = CanonicalSPIRIT(
-                n_channels=X.shape[1],
-                n_latent=n_latent,
-                n_times=X.shape[-1],
-                window_size=20,
-                latent_dim=10,
-                filter_size=50,
-                pool_factor=10,
-                n_outputs=Y.shape[1]
-            )
-            interpretation = SPIRITInterpreter
-            parametrizer = SPIRITParameters
-        case _:
-            raise ValueError(f'Invalid model name: {model_name}')
+        sbj_test_datasets = list()
+        for sbj in current_testing:
+            iterator.select_subject(sbj)
+            sbj_test_datasets.append(EpochsDataset.load(iterator.dataset_path))
+
+
+
 
     optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
     loss = torch.nn.MSELoss()
@@ -363,39 +273,4 @@ if __name__ == '__main__':
             fig.savefig(os.path.join(img_path, f'Branch_{i}_g.png'), dpi=300)
 
     perf_table_path = os.path.join(
-        iterator.history_path,
-        f'{classification_name_formatted}.csv'
-    )
-    processed_df = pd.Series(
-        [
-            len(train),
-            len(test),
-            train_acc_,
-            train_loss_,
-            test_acc_,
-            test_loss_,
-            gtest_acc_,
-            gtest_loss_,
-            runtime
-        ],
-        index=[
-            'train_set',
-            'test_set',
-            'train_mae',
-            'train_loss',
-            'test_mae',
-            'test_loss',
-            'generalization_mae',
-            'generalization_loss',
-            'runtime'
-        ],
-        name=subject_name
-    ).to_frame().T
-
-    if os.path.exists(perf_table_path):
-        pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
-            .to_csv(perf_table_path)
-    else:
-        processed_df.to_csv(perf_table_path)
-
-logging.info('All subjects are processed')
+    
