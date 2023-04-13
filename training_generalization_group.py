@@ -116,8 +116,10 @@ if __name__ == '__main__':
                 logging.debug(f'Skipping subject {subject_name}')
                 continue
 
-            sp_preprocessor = BasicPreprocessor(103, 200)
-            con_preprocessor = BasicPreprocessor(103, 200, 2)
+            # sp_preprocessor = BasicPreprocessor(103, 200)
+            # con_preprocessor = BasicPreprocessor(103, 200, 2)
+            sp_preprocessor = BasicPreprocessor(105, 200)
+            con_preprocessor = BasicPreprocessor(105, 200, 2)
             preprcessed_training, preprcessed_testing = list(), list()
             if 'sp' in kind and 'con' in kind:
                 raise ValueError('Training data can not be both conteptual and spatial')
@@ -389,7 +391,7 @@ if __name__ == '__main__':
             'generalization_loss',
             'runtime'
         ],
-        name=subject_name
+        name='group'
     ).to_frame().T
 
     if os.path.exists(perf_table_path):

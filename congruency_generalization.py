@@ -63,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
-    parser.add_argument('-k', '--kind', type=str, help='Data to generalize: spatial (sp) or conceptual (con)', default='sp')
+    parser.add_argument('-k', '--kind', type=str, help='Data to generalize: spatial (sp) or conceptual (con)', default='spcon')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
@@ -109,10 +109,11 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     info = None
     training_subjects, testing_subjects = list(), list()
+
     for subject_name in iterator:
+        subject_num = int(re.findall(r'\d+', subject_name)[0])
         if not os.path.exists(iterator.dataset_path) or info is None:
             logging.debug(f'Processing subject: {subject_name}')
-            subject_num = int(re.findall(r'\d+', subject_name)[0])
 
             if (subject_num in excluded_subjects) or\
                 (from_ and subject_num < from_) or\
@@ -120,8 +121,10 @@ if __name__ == '__main__':
                 logging.debug(f'Skipping subject {subject_name}')
                 continue
 
-            sp_preprocessor = BasicPreprocessor(103, 200)
-            con_preprocessor = BasicPreprocessor(103, 200, 2)
+            # sp_preprocessor = BasicPreprocessor(103, 200)
+            # con_preprocessor = BasicPreprocessor(103, 200, 2)
+            sp_preprocessor = BasicPreprocessor(105, 200)
+            con_preprocessor = BasicPreprocessor(105, 200, 2)
             preprcessed = list()
             if 'sp' in kind:
                 preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
@@ -157,120 +160,113 @@ if __name__ == '__main__':
                 for data in preprcessed
             ]
             Y = np.concatenate(acc)
-            if subject_num in generalized_subjects:
-                # indices = np.arange(len(Y))
-                # np.random.shuffle(indices)
-                # n_test_samples = int(0.3*len(Y))
-                # indices = indices[:n_test_samples]
-                # X, Y = X[indices], Y[indices]
-                testing_subjects.append(subject_name)
-            else:
-                training_subjects.append(subject_name)
 
             dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
-            dataset.save(iterator.dataset_content_path)
-            logging.debug(f'Dataset for subject {subject_name} has been made ({len(dataset)} samples, learn: {generalized_subjects})')
-        else:
-            logging.debug(f'Dataset for subject {subject_name} is already exists')
+            dataset.save(iterator.dataset_path)
+            logging.debug(f'Dataset for subject {subject_name} has been made ({len(dataset)} samples)')
+
             if subject_num in generalized_subjects:
                 testing_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to testing group')
             else:
                 training_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to training group')
+        else:
+            logging.debug(f'Dataset for subject {subject_name} is already exists')
+
+            if subject_num in generalized_subjects:
+                testing_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to testing group')
+            else:
+                training_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to training group')
+
+    perf_table_path = os.path.join(
+        iterator.history_path,
+        f'{classification_name_formatted}.csv'
+    )
 
     for selected_subject in training_subjects:
         logging.debug(f'Selected subject: {selected_subject}')
-        current_testing = [selected_subject] + testing_subjects
-        dataset = get_combined_dataset(iterator, *(set(training_subjects) - {selected_subject}))
+        current_training = list(set(training_subjects) - {selected_subject})
+        current_testing = testing_subjects + [selected_subject]
+        logging.debug(f'\ntraining group:\n{current_training}\ntesting group:\n{current_testing}')
+        logging.debug('Preparing training set')
+        dataset = get_combined_dataset(iterator, *current_training)
         train, test = torch.utils.data.random_split(dataset, [.7, .3])
         X, Y = next(iter(DataLoader(train, 2)))
 
         sbj_test_datasets = list()
+        logging.debug('Preparing testing sets')
         for sbj in current_testing:
             iterator.select_subject(sbj)
             sbj_test_datasets.append(EpochsDataset.load(iterator.dataset_path))
 
+        model, _, _ = get_model_by_name(model_name, X, Y)
+        optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
+        loss = torch.nn.MSELoss()
+        metric = ('mae', torch.nn.L1Loss())
+        model.compile(
+            optimizer,
+            loss,
+            metric,
+            callbacks=[
+                PrintingCallback(),
+                TempConvAveClipping(),
+                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                L2Reg(
+                    [
+                        'unmixing_layer.weight', 'temp_conv.weight',
+                    ], lambdas=.01
+                )
+            ],
+            device=device
+        )
 
+        t1 = perf_counter()
+        history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
+        runtime = perf_counter() - t1
+        figs = plot_metrics(history)
+        for fig, name in zip(
+            figs,
+            set(map(lambda name: name.split('_')[0], history.keys()))
+        ):
+            fig.savefig(os.path.join(iterator.pics_path, f'{name}.png'), dpi=300)
 
+        train_result = model.evaluate(train)
+        result = model.evaluate(test)
+        train_loss_, train_acc_ = train_result.values()
+        test_loss_, test_acc_ = result.values()
 
-    optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
-    loss = torch.nn.MSELoss()
-    metric = ('mae', torch.nn.L1Loss())
-    model.compile(
-        optimizer,
-        loss,
-        metric,
-        callbacks=[
-            PrintingCallback(),
-            TempConvAveClipping(),
-            EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-            L2Reg(
-                [
-                    'unmixing_layer.weight', 'temp_conv.weight',
-                ], lambdas=.01
-            )
-        ],
-        device=device
-    )
+        subject_accs = list()
+        for subject_name, subject_data in zip(current_testing, sbj_test_datasets):
+            result = model.evaluate(subject_data)
+            subject_loss, subject_acc = result.values()
+            subject_accs.append(subject_acc)
 
-    t1 = perf_counter()
-    history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
-    runtime = perf_counter() - t1
-    figs = plot_metrics(history)
-    for fig, name in zip(
-        figs,
-        set(map(lambda name: name.split('_')[0], history.keys()))
-    ):
-        fig.savefig(os.path.join(img_path, f'{name}.png'), dpi=300)
+        processed_df = pd.Series(
+            [
+                len(train),
+                len(test),
+                train_acc_,
+                test_acc_,
+                runtime,
+                *subject_accs
+            ],
+            index=[
+                'train_set',
+                'test_set',
+                'train_mae',
+                'test_mae',
+                'runtime',
+                *[f'{sbj}_mae' for sbj in current_testing]
+            ],
+            name=selected_subject
+        ).to_frame().T
 
-    x_train, y_true_train = next(iter(DataLoader(train, len(train))))
-    y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
-    x_test, y_true_test = next(iter(DataLoader(test, len(test))))
-    y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
-    x_gtest, y_true_gtest = next(iter(DataLoader(gtest, len(gtest))))
-    y_pred_gtest = torch.squeeze(model(x_gtest)).detach().numpy()
-
-    save(
-        Predictions(
-            y_pred_test,
-            y_true_test
-        ),
-        iterator.predictions_path
-    )
-    save(
-        Predictions(
-            y_pred_gtest,
-            y_true_gtest
-        ),
-        iterator.predictions_path[:-4] + '_generalized.pkl'
-    )
-
-    train_result = model.evaluate(train)
-    result = model.evaluate(test)
-    gresult = model.evaluate(gtest)
-
-
-    train_loss_, train_acc_ = train_result.values()
-    test_loss_, test_acc_ = result.values()
-    gtest_loss_, gtest_acc_ = gresult.values()
-    logging.info(f'{subject_name}\nClassification results:\n \tRUNTIME: {runtime}\n\tTRAIN_ACC: {train_acc_}\n\tTEST_ACC: {test_acc_}\n\tGENERALIZATION_ACC: {gtest_acc_}')
-
-    if not no_params:
-        logging.debug('Computing parameters')
-        interpreter = interpretation(model, test, info)
-        params = parametrizer(interpreter)
-        params.save(iterator.parameters_path)
-
-        for i in range(n_latent):
-            fig = interpreter.plot_branch(i)
-            fig.savefig(os.path.join(img_path, f'Branch_{i}.png'), dpi=300)
-
-        interpreter = interpretation(model, gtest, info)
-        params = parametrizer(interpreter)
-        params.save(iterator.parameters_path[:-4] + '_generalized.pkl')
-
-        for i in range(n_latent):
-            fig = interpreter.plot_branch(i)
-            fig.savefig(os.path.join(img_path, f'Branch_{i}_g.png'), dpi=300)
-
-    perf_table_path = os.path.join(
-    
+        if os.path.exists(perf_table_path):
+            pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
+                .to_csv(perf_table_path)
+        else:
+            processed_df.to_csv(perf_table_path)
+    logging.info('All subjects are processed')
