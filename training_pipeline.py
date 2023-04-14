@@ -18,7 +18,6 @@ from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpret
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
-from utils import TempConvAveClipping
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters
 from deepmeg.experimental.params import SPIRITParameters
@@ -26,7 +25,7 @@ import torch
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torchmetrics
-from utils import PenalizedEarlyStopping
+from utils import PenalizedEarlyStopping, TempConvAveClipping, IndependanceConstraint
 from deepmeg.utils.convtools import conviter
 from deepmeg.utils import check_path
 from deepmeg.utils.viz import plot_metrics
@@ -259,6 +258,7 @@ if __name__ == '__main__':
             callbacks=[
                 PrintingCallback(),
                 TempConvAveClipping(),
+                IndependanceConstraint(n_latent),
                 EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [

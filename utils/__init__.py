@@ -86,3 +86,28 @@ class TempConvAveClipping(Callback):
         metrics: dict
     ):
         self.model.apply(self.clipper)
+
+
+class IndependanceConstraint(Callback):
+    def __init__(self, n_latent: int):
+        self.n_latent = n_latent
+        self.eye = torch.eye(self.n_latent)
+        super().__init__()
+
+    def set_trainer(self, trainer: 'Trainer'):
+        super().set_trainer(trainer)
+        self.model = self.trainer.model
+
+    def on_loss_computed(self, X, Y, Y_pred, loss, is_training=True):
+
+        if is_training:
+            x = self.model.unmixing_layer(X)
+
+            x = x.permute(1, 0, -1)
+            x = x.reshape(x.shape[0], x.shape[1]*x.shape[2])
+            s = torch.corrcoef(x)
+            err = (((s - self.eye)**2)/self.n_latent**2).sum()
+
+            loss += err
+
+        return loss
