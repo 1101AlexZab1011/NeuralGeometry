@@ -3,6 +3,7 @@
 import matplotlib as mpl
 import argparse
 import os
+from utils.data import get_combined_dataset
 from utils.models import get_model_by_name
 from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor
@@ -11,7 +12,7 @@ import pandas as pd
 from time import perf_counter
 import re
 import logging
-from utils import balance
+from utils import TempConvAveClipping, balance
 from deepmeg.models.interpretable import LFCNN, HilbertNet
 from deepmeg.experimental.models import SPIRIT, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
 from deepmeg.interpreters import LFCNNInterpreter
@@ -25,6 +26,7 @@ import torch
 from torch.utils.data import DataLoader, ConcatDataset
 import torchmetrics
 from utils import PenalizedEarlyStopping
+from deepmeg.utils.viz import plot_metrics
 
 
 if __name__ == '__main__':
@@ -35,6 +37,8 @@ if __name__ == '__main__':
     )
     parser.add_argument('-es', '--exclude-subjects', type=int, nargs='+',
                         default=[], help='IDs of subjects to exclude')
+    parser.add_argument('-gs', '--generalize-subjects', type=int, nargs='+',
+                        default=[], help='IDs of subjects to generalize but do not include to training sets')
     parser.add_argument('-from', type=int,
                         default=None, help='ID of a subject to start from')
     parser.add_argument('-to', type=int,
@@ -50,7 +54,7 @@ if __name__ == '__main__':
                         default='', help='String to set in the start of a task name')
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
-    parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    # parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spcon"', default='spcon')
@@ -64,6 +68,7 @@ if __name__ == '__main__':
 
 
     excluded_subjects, \
+        generalized_subjects, \
         from_, \
         to, \
         subjects_dir, \
@@ -71,7 +76,6 @@ if __name__ == '__main__':
         classification_postfix,\
         classification_prefix, \
         project_name, \
-        no_params, \
         balance_classes, \
         target_col_name,\
         kind,\
@@ -100,6 +104,7 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
     info = None
+    training_subjects, testing_subjects = list(), list()
     n_classes = None
     all_classes_samples = None
     for subject_name in iterator:
@@ -158,101 +163,113 @@ if __name__ == '__main__':
 
             dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
             dataset.save(iterator.dataset_path)
+            logging.debug(f'Dataset for subject {subject_name} has been made ({len(dataset)} samples)')
+
+            if subject_num in generalized_subjects:
+                testing_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to testing group')
+            else:
+                training_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to training group')
+
             all_data.append(dataset)
         else:
-            all_data.append(EpochsDataset.load(iterator.dataset_path))
+            logging.debug(f'Dataset for subject {subject_name} is already exists')
 
-    iterator.select_subject('group')
-    dataset = ConcatDataset(all_data)
-    logging.info(f'{len(dataset)} samples in total')
-    train, test = torch.utils.data.random_split(dataset, [.7, .3])
-    X, Y = next(iter(DataLoader(train, 2)))
-
-    model, interpretation, parametrizer = get_model_by_name(model_name, X, Y)
-
-    optimizer = torch.optim.Adam
-    loss = torch.nn.BCEWithLogitsLoss()
-    metric = torchmetrics.functional.classification.binary_accuracy
-    model.compile(
-        optimizer,
-        loss,
-        metric,
-        callbacks=[
-            PrintingCallback(),
-            # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-            PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
-            L2Reg(
-                [
-                    'unmixing_layer.weight', 'temp_conv.weight',
-                ], lambdas=.01
-            )
-        ],
-        device=device
-    )
-
-    t1 = perf_counter()
-    history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
-    runtime = perf_counter() - t1
-
-    x_train, y_true_train = next(iter(DataLoader(train, len(train))))
-    y_pred_train = torch.squeeze(model(x_train)).detach().numpy()
-    x_test, y_true_test = next(iter(DataLoader(test, len(test))))
-    y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
-
-    save(
-        Predictions(
-            y_pred_test,
-            y_true_test
-        ),
-        iterator.predictions_path
-    )
-
-    train_result = model.evaluate(train)
-    result = model.evaluate(test)
-
-    train_loss_, train_acc_ = train_result.values()
-    test_loss_, test_acc_ = result.values()
-    logging.info(f'{subject_name}\nClassification results:\n \tRUNTIME: {runtime}\n\tTRAIN_ACC: {train_acc_}\n\tTEST_ACC: {test_acc_}')
-
-    if not no_params:
-        logging.debug('Computing parameters')
-        params = parametrizer(interpretation(model, test, info))
-        params.save(iterator.parameters_path)
+            if subject_num in generalized_subjects:
+                testing_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to testing group')
+            else:
+                training_subjects.append(subject_name)
+                logging.debug(f'Subject {subject_name} is added to training group')
 
     perf_table_path = os.path.join(
         iterator.history_path,
         f'{classification_name_formatted}.csv'
     )
-    processed_df = pd.Series(
-        [
-            n_classes,
-            *classes_samples,
-            sum(classes_samples),
-            len(test),
-            train_acc_,
-            train_loss_,
-            test_acc_,
-            test_loss_,
-            runtime
-        ],
-        index=[
-            'n_classes',
-            *[str(i) for i in range(len(classes_samples))],
-            'total',
-            'test_set',
-            'train_acc',
-            'train_loss',
-            'test_acc',
-            'test_loss',
-            'runtime'
-        ],
-        name=f'group_{from_}-{to}'
-    ).to_frame().T
 
-    if os.path.exists(perf_table_path):
-        pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
-            .to_csv(perf_table_path)
-    else:
-        processed_df.to_csv(perf_table_path)
+    for selected_subject in training_subjects:
+        logging.debug(f'Selected subject: {selected_subject}')
+        current_training = list(set(training_subjects) - {selected_subject})
+        current_testing = testing_subjects + [selected_subject]
+        logging.debug(f'\ntraining group:\n{current_training}\ntesting group:\n{current_testing}')
+        logging.debug('Preparing training set')
+        dataset = get_combined_dataset(iterator, *current_training)
+        train, test = torch.utils.data.random_split(dataset, [.7, .3])
+        X, Y = next(iter(DataLoader(train, 2)))
 
-logging.info('All subjects are processed')
+        sbj_test_datasets = list()
+        logging.debug('Preparing testing sets')
+
+        for sbj in current_testing:
+            iterator.select_subject(sbj)
+            sbj_test_datasets.append(EpochsDataset.load(iterator.dataset_path))
+
+        model, interpretation, parametrizer = get_model_by_name(model_name, X, Y)
+        optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
+        loss = torch.nn.BCEWithLogitsLoss()
+        metric = torchmetrics.functional.classification.binary_accuracy
+        model.compile(
+            optimizer,
+            loss,
+            metric,
+            callbacks=[
+                PrintingCallback(),
+                TempConvAveClipping(),
+                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                L2Reg(
+                    [
+                        'unmixing_layer.weight', 'temp_conv.weight',
+                    ], lambdas=.01
+                )
+            ],
+            device=device
+        )
+        t1 = perf_counter()
+        history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
+        runtime = perf_counter() - t1
+        figs = plot_metrics(history)
+
+        for fig, name in zip(
+            figs,
+            set(map(lambda name: name.split('_')[0], history.keys()))
+        ):
+            fig.savefig(os.path.join(iterator.pics_path, f'{name}.png'), dpi=300)
+
+        train_result = model.evaluate(train)
+        result = model.evaluate(test)
+        train_loss_, train_acc_ = train_result.values()
+        test_loss_, test_acc_ = result.values()
+
+        subject_accs = list()
+        for subject_name, subject_data in zip(current_testing, sbj_test_datasets):
+            result = model.evaluate(subject_data)
+            subject_loss, subject_acc = result.values()
+            subject_accs.append(subject_acc)
+
+        processed_df = pd.Series(
+            [
+                len(train),
+                len(test),
+                train_acc_,
+                test_acc_,
+                runtime,
+                *subject_accs
+            ],
+            index=[
+                'train_set',
+                'test_set',
+                'train_mae',
+                'test_mae',
+                'runtime',
+                *[f'{sbj}_mae' for sbj in current_testing]
+            ],
+            name=selected_subject
+        ).to_frame().T
+
+        if os.path.exists(perf_table_path):
+            pd.concat([pd.read_csv(perf_table_path, index_col=0, header=0), processed_df], axis=0)\
+                .to_csv(perf_table_path)
+        else:
+            processed_df.to_csv(perf_table_path)
+    logging.info('All subjects are processed')

@@ -3,6 +3,7 @@
 import matplotlib as mpl
 import argparse
 import os
+from utils.models import get_model_by_name
 from utils.storage import DLStorageIterator, STAGE
 from utils.preprocessing import BasicPreprocessor
 import numpy as np
@@ -147,81 +148,7 @@ if __name__ == '__main__':
         dataset.save(iterator.dataset_path)
         train, test = torch.utils.data.random_split(dataset, [.7, .3])
 
-        match model_name:
-            case 'lfcnn':
-                model = LFCNN(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNInterpreter
-                parametrizer = LFCNNParameters
-            case 'lfcnnw':
-                model = LFCNNW(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNWInterpreter
-                parametrizer = SPIRITParameters
-            case 'hilbert':
-                model = HilbertNet(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = LFCNNInterpreter
-                parametrizer = LFCNNParameters
-            case 'spirit':
-                model = SPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case 'fourier':
-                model = FourierSPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case 'canonical':
-                model = CanonicalSPIRIT(
-                    n_channels=X.shape[1],
-                    n_latent=8,
-                    n_times=X.shape[-1],
-                    window_size=20,
-                    latent_dim=10,
-                    filter_size=50,
-                    pool_factor=10,
-                    n_outputs=Y.shape[1]
-                )
-                interpretation = SPIRITInterpreter
-                parametrizer = SPIRITParameters
-            case _:
-                raise ValueError(f'Invalid model name: {model_name}')
+        model, interpretation, parametrizer = get_model_by_name(model_name, X, Y)
 
         optimizer = torch.optim.Adam
         loss = torch.nn.BCEWithLogitsLoss()
