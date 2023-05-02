@@ -13,17 +13,11 @@ from time import perf_counter
 import re
 import logging
 from utils import TempConvAveClipping, balance
-from deepmeg.models.interpretable import LFCNN, HilbertNet
-from deepmeg.experimental.models import SPIRIT, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
-from deepmeg.interpreters import LFCNNInterpreter
-from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
-from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
-from deepmeg.training.trainers import Trainer
-from deepmeg.utils.params import Predictions, save, LFCNNParameters, SPIRITParameters
+from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg
 import torch
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader
 import torchmetrics
 from utils import PenalizedEarlyStopping
 from deepmeg.utils.viz import plot_metrics
@@ -216,7 +210,8 @@ if __name__ == '__main__':
             callbacks=[
                 PrintingCallback(),
                 TempConvAveClipping(),
-                EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
+                PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
