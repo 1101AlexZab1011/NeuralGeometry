@@ -17,7 +17,7 @@ from deepmeg.interpreters import LFCNNInterpreter
 from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
-from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
+from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters
 from deepmeg.experimental.params import SPIRITParameters
@@ -36,6 +36,12 @@ def moving_average(data, win=5):
     for k, _, _ in conviter(data.shape, (win,), 'same'):
         acc.append(data[k].mean())
     return np.array(acc)
+
+def emae(output, target):
+    loss = torch.mean(
+        torch.exp(torch.abs(output - target)) - 1
+    )
+    return loss
 
 
 if __name__ == '__main__':
@@ -119,18 +125,18 @@ if __name__ == '__main__':
         check_path(img_path)
         sp_preprocessor = BasicPreprocessor(103, 200)
         con_preprocessor = BasicPreprocessor(103, 200, 2)
-        preprcessed = list()
+        preprocessed = list()
         kinds = list()
         if 'sp' in kind:
             kinds.append('sp')
-            preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
+            preprocessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
         if 'con' in kind:
             kinds.append('con')
-            preprcessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
-        if not preprcessed:
+            preprocessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
+        if not preprocessed:
             raise ValueError(f'No data selected. Your config is: {kind = }')
 
-        info = preprcessed[0].epochs.pick_types(meg='grad').info
+        info = preprocessed[0].epochs.pick_types(meg='grad').info
         X = np.concatenate([
             data.
             epochs.
@@ -138,9 +144,9 @@ if __name__ == '__main__':
             apply_baseline((bl_from, bl_to)).
             crop(crop_from, crop_to).
             get_data()
-            for data in preprcessed
+            for data in preprocessed
             ])
-        feedbacks = [data.session_info.Feedback.to_numpy() for data in preprcessed]
+        feedbacks = [data.session_info.Feedback.to_numpy() for data in preprocessed]
         feedbacks_np = moving_average(np.concatenate(feedbacks), win)
         min_, max_ = feedbacks_np.min(), feedbacks_np.max()
         del feedbacks_np
@@ -155,8 +161,13 @@ if __name__ == '__main__':
                 ),
                 1
             )
-            for data in preprcessed
+            for data in preprocessed
         ]
+
+        for acc_, data in zip(acc, preprocessed):
+            data.session_info['acc'] = acc_
+
+        sesinfo = pd.concat([data.session_info for data in preprocessed], axis=0).reset_index(drop=True)
         Y = np.concatenate(acc)
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
 
@@ -171,6 +182,9 @@ if __name__ == '__main__':
         dataset = EpochsDataset((X, Y), transform=zscore, savepath=iterator.dataset_content_path)
         dataset.save(iterator.dataset_path)
         train, test = torch.utils.data.random_split(dataset, [.7, .3])
+
+        sesinfo_test = sesinfo.iloc[test.indices]
+        sesinfo_test.to_csv(os.path.join(iterator.subject_results_path, 'test_session_info.csv'))
 
         match model_name:
             case 'lfcnn':
@@ -249,7 +263,8 @@ if __name__ == '__main__':
                 raise ValueError(f'Invalid model name: {model_name}')
 
         optimizer = torch.optim.Adam
-        loss = torch.nn.MSELoss()
+        # loss = torch.nn.MSELoss()
+        loss = emae
         metric = ('mae', torch.nn.L1Loss())
         model.compile(
             optimizer,
@@ -258,7 +273,7 @@ if __name__ == '__main__':
             callbacks=[
                 PrintingCallback(),
                 TempConvAveClipping(),
-                IndependanceConstraint(n_latent),
+                # IndependanceConstraint(n_latent),
                 EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
