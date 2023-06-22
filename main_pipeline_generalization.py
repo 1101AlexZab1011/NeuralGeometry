@@ -12,15 +12,16 @@ import pandas as pd
 from time import perf_counter
 import re
 import logging
-from utils import TempConvAveClipping, balance
+from utils import TempConvAveClipping, accuracy, balance
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
-from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg
+from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, VisualizingCallback
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
 from utils import PenalizedEarlyStopping
 from deepmeg.utils.viz import plot_metrics
+from deepmeg.utils.params import Predictions, save
 
 
 if __name__ == '__main__':
@@ -48,7 +49,8 @@ if __name__ == '__main__':
                         default='', help='String to set in the start of a task name')
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
-    # parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    parser.add_argument('--not-save-params', action='store_true', help='Do not save parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spcon"', default='spcon')
@@ -59,6 +61,7 @@ if __name__ == '__main__':
     parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
     parser.add_argument('-d', '--device', type=str, help='Device to use', default='cuda')
+    parser.add_argument('-l', '--lock', type=str, help='Clue lock (clue), feedback lock (feedback) or stimulus lock (stim)', default='stim')
 
 
     excluded_subjects, \
@@ -70,6 +73,8 @@ if __name__ == '__main__':
         classification_postfix,\
         classification_prefix, \
         project_name, \
+        no_params, \
+        not_save_params, \
         balance_classes, \
         target_col_name,\
         kind,\
@@ -77,7 +82,21 @@ if __name__ == '__main__':
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name,\
-        device = vars(parser.parse_args()).values()
+        device,\
+        lock = vars(parser.parse_args()).values()
+
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+    n_latent = 8
+
+    match lock:
+        case 'clue':
+            lock = 102
+        case 'stim':
+            lock = 103
+        case 'feedback':
+            lock = 105
+        case _:
+            raise ValueError(f'Invalid lock: {lock}')
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -112,23 +131,27 @@ if __name__ == '__main__':
                 logging.debug(f'Skipping subject {subject_name}')
                 continue
 
-            sp_preprocessor = BasicPreprocessor(103, 200)
-            con_preprocessor = BasicPreprocessor(103, 200, 2)
-            preprcessed = list()
+            sp_preprocessor = BasicPreprocessor(lock, 200)
+            con_preprocessor = BasicPreprocessor(lock, 200, 2)
+            preprocessed = list()
             if 'sp' in kind:
                 if 'pre' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                    preprocessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
                 if 'post' in stage:
-                    preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                    preprocessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                if 'train' in stage:
+                    preprocessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
             if 'con' in kind:
                 if 'pre' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
+                    preprocessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
                 if 'post' in stage:
-                    preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
-            if not preprcessed:
+                    preprocessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+                if 'train' in stage:
+                    preprocessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
+            if not preprocessed:
                 raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
 
-            info = preprcessed[0].epochs.pick_types(meg='grad').info
+            info = preprocessed[0].epochs.pick_types(meg='grad').info
             X = np.concatenate([
                 data.
                 epochs.
@@ -136,9 +159,11 @@ if __name__ == '__main__':
                 apply_baseline((bl_from, bl_to)).
                 crop(crop_from, crop_to).
                 get_data()
-                for data in preprcessed
+                for data in preprocessed
                 ])
-            Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
+            sesinfo = pd.concat([data.session_info for data in preprocessed], axis=0)
+            sesinfo.to_csv(os.path.join(iterator.subject_results_path, 'session_info.csv'))
+            Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprocessed])
 
             if balance_classes:
                 X, Y = balance(X, Y)
@@ -169,6 +194,7 @@ if __name__ == '__main__':
             all_data.append(dataset)
         else:
             logging.debug(f'Dataset for subject {subject_name} is already exists')
+            subject_num = int(re.findall(r'\d+', subject_name)[0])
 
             if subject_num in generalized_subjects:
                 testing_subjects.append(subject_name)
@@ -202,16 +228,27 @@ if __name__ == '__main__':
         model, interpretation, parametrizer = get_model_by_name(model_name, X, Y)
         optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.0001)
         loss = torch.nn.BCEWithLogitsLoss()
-        metric = torchmetrics.functional.classification.binary_accuracy
+        metric = accuracy
         model.compile(
             optimizer,
             loss,
             metric,
             callbacks=[
-                PrintingCallback(),
+                # PrintingCallback(),
+                VisualizingCallback(
+                    width = 60,
+                    height = 10,
+                    n_epochs=150,
+                    loss_colors=['magenta', 'yellow'],
+                    metric_colors=['green', 'blue'],
+                    metric_label='Accuracy',
+                    loss_label='BCELoss',
+                    metric_names=['accuracy_train', 'accuracy_val'],
+                    loss_names=['loss_train', 'loss_val'],
+                ),
                 TempConvAveClipping(),
                 # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-                PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
+                PenalizedEarlyStopping(monitor='loss_val', measure='accuracy_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
@@ -242,6 +279,30 @@ if __name__ == '__main__':
             subject_loss, subject_acc = result.values()
             subject_accs.append(subject_acc)
 
+            iterator.select_subject(subject_name)
+
+            x_test, y_true_test = next(iter(DataLoader(subject_data, len(subject_data))))
+            y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
+            save(
+                Predictions(
+                    y_pred_test,
+                    y_true_test
+                ),
+                iterator.predictions_path[:-4] + f'_{selected_subject}_excluded.pkl'
+            )
+
+        if not no_params:
+            logging.debug(f'Computing parameters for {selected_subject}')
+            interpreter = interpretation(model, sbj_test_datasets[-1], info)
+
+            if not not_save_params:
+                params = parametrizer(interpreter)
+                params.save(iterator.parameters_path)
+
+            for i in range(n_latent):
+                fig = interpreter.plot_branch(i)
+                fig.savefig(os.path.join(iterator.pics_path, f'Branch_{i}.png'), dpi=300)
+
         processed_df = pd.Series(
             [
                 len(train),
@@ -254,10 +315,10 @@ if __name__ == '__main__':
             index=[
                 'train_set',
                 'test_set',
-                'train_mae',
-                'test_mae',
+                'train_acc',
+                'test_acc',
                 'runtime',
-                *[f'{sbj}_mae' for sbj in current_testing]
+                *[f'{sbj}_acc' for sbj in current_testing]
             ],
             name=selected_subject
         ).to_frame().T

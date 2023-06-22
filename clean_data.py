@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('-sd', '--subjects-dir', type=str,
                         default=os.path.join(os.getcwd(), 'DATA'),
                         help='Path to the subjects directory')
-    parser.add_argument('--name', type=str, default='Default_name',
+    parser.add_argument('--names', nargs='+', type=str, default=None,
                         help='Name of a task')
     parser.add_argument('--postfix', type=str,
                         default='', help='String to append to a task name')
@@ -53,47 +53,51 @@ if __name__ == '__main__':
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--clean-params', action='store_true', help='To remove parameters')
 
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
 
     excluded_subjects, \
         from_, \
         to, \
         subjects_dir, \
-        classification_name,\
+        classification_names,\
         classification_postfix,\
         classification_prefix, \
         project_name,\
         remove_params = vars(parser.parse_args()).values()
 
-    classification_name_formatted = "_".join(list(filter(
-        lambda s: s not in (None, ""),
-        [
-            classification_prefix,
-            classification_name,
-            classification_postfix
-        ]
-    )))
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s:\t%(message)s',
-        filename=f'./logs/{classification_name_formatted}.log',
-        encoding='utf-8',
-        level=logging.DEBUG
-    )
-    logging.info(f'Clean data for: {classification_name_formatted}')
+    for classification_name in classification_names:
 
-    iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
-    for subject_name in iterator:
-        logging.debug(f'Processing subject: {subject_name}')
-        subject_num = int(re.findall(r'\d+', subject_name)[0])
+        classification_name_formatted = "_".join(list(filter(
+            lambda s: s not in (None, ""),
+            [
+                classification_prefix,
+                classification_name,
+                classification_postfix
+            ]
+        )))
+        logging.basicConfig(
+            format='%(asctime)s %(levelname)s:\t%(message)s',
+            filename=f'./logs/{classification_name_formatted}.log',
+            encoding='utf-8',
+            level=logging.DEBUG
+        )
+        logging.info(f'Clean data for: {classification_name_formatted}')
 
-        if (subject_num in excluded_subjects) or\
-            (from_ and subject_num < from_) or\
-            (to and subject_num > to):
-            logging.debug(f'Skipping subject {subject_name}')
-            continue
+        iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
+        for subject_name in iterator:
+            logging.debug(f'Processing subject: {subject_name}')
+            subject_num = int(re.findall(r'\d+', subject_name)[0])
 
-        if remove_params:
-            logging.debug(f'Remove all results')
-            shutil.rmtree(iterator.subject_results_path)
-        else:
-            logging.debug(f'Remove dataset')
-            shutil.rmtree(iterator.dataset_content_path)
+            if (subject_num in excluded_subjects) or\
+                (from_ and subject_num < from_) or\
+                (to and subject_num > to):
+                logging.debug(f'Skipping subject {subject_name}')
+                continue
+
+            if remove_params:
+                logging.debug(f'Remove all results')
+                shutil.rmtree(iterator.subject_results_path)
+            else:
+                logging.debug(f'Remove dataset')
+                shutil.rmtree(iterator.dataset_content_path)

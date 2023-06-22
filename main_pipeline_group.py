@@ -62,6 +62,8 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
     parser.add_argument('-d', '--device', type=str, help='Device to use', default='cuda')
 
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
 
     excluded_subjects, \
         from_, \
