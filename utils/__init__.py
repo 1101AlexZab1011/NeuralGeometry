@@ -21,6 +21,44 @@ def balance(X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
     return np.array(X_list), np.array(Y_list)
 
+
+def accuracy(predictions, targets):
+    """
+    Computes the accuracy metric for multiclass tasks with one-hot encoded labels.
+
+    Args:
+    - predictions: A PyTorch tensor of shape (batch_size, num_classes) representing the model's predictions.
+    - targets: A PyTorch tensor of shape (batch_size, num_classes) representing the true labels in one-hot encoded format.
+
+    Returns:
+    - accuracy: A float value representing the accuracy metric.
+    """
+
+    # Convert one-hot encoded labels to class indices
+    targets = torch.argmax(targets, dim=1)
+
+    # Compute predicted class indices
+    _, predicted = torch.max(predictions, dim=1)
+
+    # Compute accuracy
+    correct = torch.sum(predicted == targets)
+    total = targets.shape[0]
+    accuracy = correct / total
+
+    return accuracy
+
+
+class R2Score(torch.nn.Module):
+    def __init__(self):
+        super(R2Score, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        total_sum_of_squares = torch.sum((y_true - torch.mean(y_true))**2)
+        residual_sum_of_squares = torch.sum((y_true - y_pred)**2)
+        r2 = 1 - residual_sum_of_squares / (total_sum_of_squares + 1e-7)  # Add a small constant to avoid division by zero
+        return r2
+
+
 class PenalizedEarlyStopping(Callback):
     def __init__(self, patience=5, monitor='loss_train', measure='binary_accuracy_train', min_delta=0, restore_best_weights=True):
         super().__init__()

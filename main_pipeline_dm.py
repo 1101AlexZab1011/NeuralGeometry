@@ -11,21 +11,21 @@ import pandas as pd
 from time import perf_counter
 import re
 import logging
-from utils import balance
+from utils import accuracy, balance
 from deepmeg.models.interpretable import LFCNN, HilbertNet
 from deepmeg.experimental.models import SPIRIT, FourierSPIRIT, CanonicalSPIRIT, LFCNNW
 from deepmeg.interpreters import LFCNNInterpreter
 from deepmeg.experimental.interpreters import SPIRITInterpreter, LFCNNWInterpreter
 from deepmeg.data.datasets import EpochsDataset
 from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
-from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback
+from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, Callback, VisualizingCallback
 from deepmeg.training.trainers import Trainer
 from deepmeg.utils.params import Predictions, save, LFCNNParameters
 from deepmeg.experimental.params import SPIRITParameters
 import torch
 from torch.utils.data import DataLoader
 import torchmetrics
-from utils import PenalizedEarlyStopping
+from utils import PenalizedEarlyStopping, TempConvAveClipping, IndependanceConstraint
 
 
 if __name__ == '__main__':
@@ -52,17 +52,18 @@ if __name__ == '__main__':
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
+    parser.add_argument('--not-save-params', action='store_true', help='Do not save parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
     parser.add_argument('-t', '--target', type=str, help='Target to predict (must be a column from sesinfo csv file)')
     parser.add_argument('-k', '--kind', type=str, help='Spatial (sp) or conceptual (con) or both "spccon"', default='spcon')
-    parser.add_argument('-st', '--stage', type=str, help='PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
+    parser.add_argument('-st', '--stage', type=str, help='Training (train), PreTest (pre) or PostTest (post) or both "prepost"', default='prepost')
     parser.add_argument('-cf', '--crop-from', type=float, help='Crop epoch from time', default=0.)
     parser.add_argument('-ct', '--crop-to', type=float, help='Crop epoch to time', default=None)
     parser.add_argument('-bf', '--bl-from', type=float, help='Baseline epoch from time', default=None)
     parser.add_argument('-bt', '--bl-to', type=float, help='Baseline epoch to time', default=0.)
     parser.add_argument('-m', '--model', type=str, help='Model to use', default='lfcnn')
     parser.add_argument('-d', '--device', type=str, help='Device to use', default='cuda')
-
+    parser.add_argument('-l', '--lock', type=str, help='Clue lock (clue), feedback lock (feedback) or stimulus lock (stim)', default='stim')
 
     excluded_subjects, \
         from_, \
@@ -73,6 +74,7 @@ if __name__ == '__main__':
         classification_prefix, \
         project_name, \
         no_params, \
+        not_save_params, \
         balance_classes, \
         target_col_name,\
         kind,\
@@ -80,7 +82,22 @@ if __name__ == '__main__':
         crop_from, crop_to,\
         bl_from, bl_to,\
         model_name,\
-        device = vars(parser.parse_args()).values()
+        device,\
+        lock = vars(parser.parse_args()).values()
+
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
+    n_latent = 8
+
+    match lock:
+        case 'clue':
+            lock = 102
+        case 'stim':
+            lock = 103
+        case 'feedback':
+            lock = 105
+        case _:
+            raise ValueError(f'Invalid lock: {lock}')
 
     classification_name_formatted = "_".join(list(filter(
         lambda s: s not in (None, ""),
@@ -109,32 +126,46 @@ if __name__ == '__main__':
             logging.debug(f'Skipping subject {subject_name}')
             continue
 
-        sp_preprocessor = BasicPreprocessor(103, 200)
-        con_preprocessor = BasicPreprocessor(103, 200, 2)
+        sp_preprocessor = BasicPreprocessor(lock, 200)
+        con_preprocessor = BasicPreprocessor(lock, 200, 2)
         preprcessed = list()
         if 'sp' in kind:
             if 'pre' in stage:
                 preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.PRETEST)))
             if 'post' in stage:
                 preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+            if 'train' in stage:
+                preprcessed.append(sp_preprocessor(iterator.get_data(STAGE.TRAINING)))
         if 'con' in kind:
             if 'pre' in stage:
                 preprcessed.append(con_preprocessor(iterator.get_data(STAGE.PRETEST)))
             if 'post' in stage:
                 preprcessed.append(con_preprocessor(iterator.get_data(STAGE.POSTTEST)))
+            if 'train' in stage:
+                preprcessed.append(con_preprocessor(iterator.get_data(STAGE.TRAINING)))
         if not preprcessed:
             raise ValueError(f'No data selected. Your config is: {kind = }, {stage = }')
 
         info = preprcessed[0].epochs.pick_types(meg='grad').info
-        X = np.concatenate([
-            data.
-            epochs.
-            pick_types(meg='grad').
-            apply_baseline((bl_from, bl_to)).
-            crop(crop_from, crop_to).
-            get_data()
-            for data in preprcessed
-            ])
+        if bl_from:
+            X = np.concatenate([
+                data.
+                epochs.
+                pick_types(meg='grad').
+                apply_baseline((bl_from, bl_to)).
+                crop(crop_from, crop_to).
+                get_data()
+                for data in preprcessed
+                ])
+        else:
+            X = np.concatenate([
+                data.
+                epochs.
+                pick_types(meg='grad').
+                crop(crop_from, crop_to).
+                get_data()
+                for data in preprcessed
+                ])
         Y = np.concatenate([data.session_info[target_col_name].to_numpy() for data in preprcessed])
 
         if balance_classes:
@@ -150,17 +181,31 @@ if __name__ == '__main__':
 
         model, interpretation, parametrizer = get_model_by_name(model_name, X, Y)
 
-        optimizer = torch.optim.Adam
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0001)
         loss = torch.nn.BCEWithLogitsLoss()
-        metric = torchmetrics.functional.classification.binary_accuracy
+        # metric = torchmetrics.functional.classification.binary_accuracy
+        metric = ('acc', accuracy)
         model.compile(
             optimizer,
             loss,
             metric,
             callbacks=[
-                PrintingCallback(),
+                # PrintingCallback(),
+                VisualizingCallback(
+                    width = 60,
+                    height = 10,
+                    n_epochs=150,
+                    loss_colors=['magenta', 'yellow'],
+                    metric_colors=['green', 'blue'],
+                    metric_label='Accuracy',
+                    loss_label='BCELoss',
+                    metric_names=['acc_train', 'acc_val'],
+                    loss_names=['loss_train', 'loss_val'],
+                ),
+                # IndependanceConstraint(8),
+                TempConvAveClipping(),
                 # EarlyStopping(monitor='loss_val', patience=15, restore_best_weights=True),
-                PenalizedEarlyStopping(monitor='loss_val', measure='binary_accuracy_val', patience=15, restore_best_weights=True),
+                PenalizedEarlyStopping(monitor='loss_val', measure='acc_val', patience=15, restore_best_weights=True),
                 L2Reg(
                     [
                         'unmixing_layer.weight', 'temp_conv.weight',
@@ -171,7 +216,7 @@ if __name__ == '__main__':
         )
 
         t1 = perf_counter()
-        history = model.fit(train, n_epochs=150, batch_size=200, val_batch_size=60)
+        history = model.fit(train, n_epochs=150, batch_size=100, val_batch_size=60)
         runtime = perf_counter() - t1
 
         x_train, y_true_train = next(iter(DataLoader(train, len(train))))
@@ -196,8 +241,15 @@ if __name__ == '__main__':
 
         if not no_params:
             logging.debug('Computing parameters')
-            params = parametrizer(interpretation(model, test, info))
-            params.save(iterator.parameters_path)
+            interpreter = interpretation(model, test, info)
+
+            if not not_save_params:
+                params = parametrizer(interpreter)
+                params.save(iterator.parameters_path)
+
+            for i in range(n_latent):
+                fig = interpreter.plot_branch(i)
+                fig.savefig(os.path.join(iterator.pics_path, f'Branch_{i}.png'), dpi=300)
 
         perf_table_path = os.path.join(
             iterator.history_path,

@@ -1,7 +1,7 @@
 #! ./venv/bin/python
 
-from deepmeg.preds import PredictionsParser
-from deepmeg.params import Predictions
+from deepmeg.utils.preds import PredictionsParser
+from deepmeg.utils.params import Predictions
 from deepmeg import read_pkl
 import matplotlib as mpl
 import argparse
@@ -61,11 +61,11 @@ if __name__ == '__main__':
             (to and subject_num > to):
             continue
 
-        predictions = read_pkl(os.path.join(iterator.predictions_path, 'y_pred.pkl'))
+        predictions = read_pkl(iterator.predictions_path)
 
         sumdf = pd.DataFrame()
         confdf = pd.DataFrame()
-        pp = PredictionsParser(predictions.y_true, predictions.y_p)
+        pp = PredictionsParser(predictions.y_true.numpy(), predictions.y_p)
         sumdf = pd.concat([
                 sumdf,
                 pp.summary(),
@@ -79,8 +79,8 @@ if __name__ == '__main__':
             ],
             axis=1
         )
-        sumdf.to_csv(os.path.join(iterator.predictions_path, f'summary.csv'))
-        confdf.to_csv(os.path.join(iterator.predictions_path, f'confusion.csv'))
+        sumdf.to_csv(os.path.join(os.path.dirname(iterator.predictions_path), f'summary.csv'))
+        confdf.to_csv(os.path.join(os.path.dirname(iterator.predictions_path), f'confusion.csv'))
         all_sumdf.append(sumdf)
         all_confdf.append(confdf)
 
