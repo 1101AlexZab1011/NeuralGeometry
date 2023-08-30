@@ -14,10 +14,11 @@ import re
 import logging
 from utils import TempConvAveClipping, accuracy, balance
 from deepmeg.data.datasets import EpochsDataset
-from deepmeg.preprocessing.transforms import one_hot_encoder, zscore
+from deepmeg.preprocessing.transforms import one_hot_encoder, zscore, one_hot_decoder
 from deepmeg.training.callbacks import PrintingCallback, EarlyStopping, L2Reg, VisualizingCallback
 import torch
 from torch.utils.data import DataLoader
+from deepmeg.utils.params import Predictions, save
 import torchmetrics
 from utils import PenalizedEarlyStopping
 from deepmeg.utils.viz import plot_metrics
@@ -48,7 +49,6 @@ if __name__ == '__main__':
                         default='', help='String to set in the start of a task name')
     parser.add_argument('--project-name', type=str,
                         default='mem_arch_epochs', help='Name of a project')
-    # parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--no-params', action='store_true', help='Do not compute parameters')
     parser.add_argument('--not-save-params', action='store_true', help='Do not save parameters')
     parser.add_argument('--balance', action='store_true', help='Balance classes')
@@ -156,8 +156,10 @@ if __name__ == '__main__':
                 get_data()
                 for data in preprocessed
             ])
+            sesinfo = pd.concat([data.session_info for data in preprocessed], axis=0)
+            sesinfo.to_csv(os.path.join(iterator.subject_results_path, 'session_info.csv'))
             Y = np.concatenate(labels)
-
+            logging.debug('Collecting dataset information...')
             info = preprocessed[0].epochs.pick_types(meg='grad').info
 
             if balance_classes:
@@ -276,8 +278,20 @@ if __name__ == '__main__':
             subject_loss, subject_acc = result.values()
             subject_accs.append(subject_acc)
 
+            iterator.select_subject(subject_name)
+
+            x_test, y_true_test = next(iter(DataLoader(subject_data, len(subject_data))))
+            y_pred_test = torch.squeeze(model(x_test)).detach().numpy()
+            save(
+                Predictions(
+                    y_pred_test,
+                    y_true_test
+                ),
+                iterator.predictions_path[:-4] + f'_{selected_subject}_excluded.pkl'
+            )
+
         if not no_params:
-            logging.debug(f'Computing parameters for {current_testing[-1]}')
+            logging.debug(f'Computing parameters for {selected_subject}')
             interpreter = interpretation(model, sbj_test_datasets[-1], info)
 
             if not not_save_params:
@@ -314,4 +328,3 @@ if __name__ == '__main__':
         else:
             processed_df.to_csv(perf_table_path)
     logging.info('All subjects are processed')
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
