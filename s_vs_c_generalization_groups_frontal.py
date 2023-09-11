@@ -6,7 +6,7 @@ import os
 from utils.data import get_combined_dataset
 from utils.models import get_model_by_name
 from utils.storage import DLStorageIterator, STAGE
-from utils.preprocessing import BasicPreprocessor
+from utils.preprocessing import BasicPreprocessor, get_frontal_indices
 import numpy as np
 import pandas as pd
 from time import perf_counter
@@ -112,6 +112,7 @@ if __name__ == '__main__':
     iterator = DLStorageIterator(subjects_dir, name=classification_name_formatted)
     all_data = list()
     info = None
+    frontal_indices = None
     training_subjects, testing_subjects = list(), list()
     n_classes = None
     all_classes_samples = None
@@ -146,10 +147,17 @@ if __name__ == '__main__':
             if not preprocessed:
                 raise ValueError(f'No data selected. Your config is: {stage = }')
 
+
+            if info is None:
+                logging.debug('Collecting dataset information...')
+                info = preprocessed[0].epochs.pick_types(meg='grad').info
+                frontal_indices = get_frontal_indices(info)
+
             X = np.concatenate([
                 data.
                 epochs.
                 pick_types(meg='grad').
+                pick(picks=frontal_indices).
                 apply_baseline((bl_from, bl_to)).
                 crop(crop_from, crop_to).
                 get_data()
@@ -158,8 +166,6 @@ if __name__ == '__main__':
             sesinfo = pd.concat([data.session_info for data in preprocessed], axis=0)
             sesinfo.to_csv(os.path.join(iterator.subject_results_path, 'session_info.csv'))
             Y = np.concatenate(labels)
-            logging.debug('Collecting dataset information...')
-            info = preprocessed[0].epochs.pick_types(meg='grad').info
 
             if balance_classes:
                 X, Y = balance(X, Y)

@@ -6,6 +6,31 @@ import pandas as pd
 from collections import namedtuple
 
 
+def get_frontal_indices(info: mne.Info) -> list[int]:
+    """
+    Select gradiometer channels corresponding to the frontal half of the head.
+
+    Args:
+        info (mne.Info): The MNE Info object containing sensor information.
+
+    Returns:
+        list: A list of indices corresponding to the selected gradiometer channels.
+    """
+    # Get the channel indices corresponding to gradiometers
+    grad_indices = mne.pick_types(info, meg=True, eeg=True)
+
+    # Get the coordinates of the gradiometer sensors
+    sensor_positions = [info['chs'][grad_ind] for grad_ind in grad_indices]
+
+    # Find the center of the sensor positions (median along y coordinates)
+    center_y = np.median([pos['loc'][1] for pos in sensor_positions])
+
+    # Select gradiometer channels corresponding to the frontal half of the head
+    frontal_indices = [i for i, pos in enumerate(sensor_positions) if pos['loc'][1] >= center_y]
+
+    return frontal_indices
+
+
 Preprocessed = namedtuple('Preprocessed', 'epochs session_info coordinates clusters')
 
 
